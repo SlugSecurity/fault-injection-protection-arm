@@ -85,11 +85,11 @@ impl FaultInjectionPrevention {
         todo!("Implement secure_random_delay.");
     }
 
-    /// A side-channel analysis resistant random delay function. Delays for 5-20 cycles. Use after
+    /// A side-channel analysis resistant random delay function. Delays for 10-50 cycles. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing.
     pub fn secure_random_delay() {
-        Self::secure_random_delay_cycles(5, 20);
+        Self::secure_random_delay_cycles(10, 50);
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
