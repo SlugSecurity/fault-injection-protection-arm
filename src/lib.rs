@@ -113,6 +113,10 @@ impl FaultInjectionPrevention {
         success: impl FnOnce(),
         failure: impl FnOnce(),
     ) {
+        // TODO: Use enum with constant large values for true, false, and error. Default to error.
+        // When checking for error case, check for not true and not false in case initializing with
+        // error value was skipped. Warning below is for tracking this TODO.
+        let x = 5;
         let mut cond = false;
 
         // Default to false, use volatile to ensure the write actually occurs.
