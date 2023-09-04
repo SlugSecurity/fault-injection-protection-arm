@@ -63,7 +63,8 @@ impl FaultInjectionPrevention {
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
     /// AAPCS calling convention that never returns. Inlined to ensure that an attacker needs to skip
-    /// more than one instruction to skip the loop.
+    /// more than one instruction to skip the loop. Use [`never_exit`]!() if you are defining the inner
+    /// most function that never exits for maximum security.
     #[inline(always)]
     pub fn secure_never_exit_func(func: extern "aapcs" fn() -> !) -> ! {
         // SAFETY: func is a valid function pointer with the AAPCS calling convention.
@@ -84,6 +85,8 @@ impl FaultInjectionPrevention {
     /// to skip the loop.
     #[inline(always)]
     pub fn secure_reset_device(&self) -> ! {
+        // TODO: See if we can reset the device without having the user pass in a function pointer.
+        // Instead, do it on our own and use never_exit!().
         Self::secure_never_exit_func(self.reset_device)
     }
 
