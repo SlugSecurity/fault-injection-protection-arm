@@ -50,6 +50,7 @@ impl FaultInjectionPrevention {
         loop {
             // SAFETY: func is a valid function pointer with the AAPCS calling convention.
             unsafe {
+                // 2b or 2b, that is the question.
                 asm!(
                     "b {}",
                     "2:",
