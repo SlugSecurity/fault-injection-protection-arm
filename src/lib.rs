@@ -1,14 +1,28 @@
-//! This crate contains fault-injection attack prevention code for ARM processors. Includes a more
-//! secure panic handler. Requires crate to be externed to use the panic handler.
+//! This crate contains fault-injection attack prevention code for ARMv7-M processors. Includes a more
+//! secure panic handler. Requires crate to be externed to use the panic handler. When a fault injection
+//! attack is detected, the device will reset.
 
 #![warn(missing_docs)]
 #![no_std]
+
+mod helper;
 
 use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
-use core::sync::atomic::{compiler_fence, Ordering};
+
+const AIRCR_ADDR: u32 = 0xE000ED0C;
+const AIRCR_VECTKEY: u32 = 0x05FA << 16;
+const AIRCR_SYSRESETREQ: u32 = 1 << 2;
+
+/// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
+/// allow breakpoints to be set.
+#[inline(never)]
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    never_exit!()
+}
 
 /// A macro for ensuring that code never exits, even in cases of fault-injection attacks.
 #[macro_export]
@@ -30,41 +44,37 @@ macro_rules! never_exit {
                 "b 2b",
                 "b 2b",
                 "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
                 options(noreturn),
             )
         }
     };
 }
 
-/// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
-/// allow breakpoints to be set.
-#[inline(never)]
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    never_exit!()
-}
-
 /// State for the fault-injection attack prevention library.
 pub struct FaultInjectionPrevention {
     fill_rand_slice: fn(&mut [u8]),
-    reset_device: extern "aapcs" fn() -> !,
 }
 
 impl FaultInjectionPrevention {
     /// Initializes the state of the fault-injection attack prevention library. Takes a closure for
-    /// for filling a slice with secure random bytes. Takes a closure for resetting the device, which
-    /// is used when a fault-injection attack is detected.
-    pub fn new(fill_rand_slice: fn(&mut [u8]), reset_device: extern "aapcs" fn() -> !) -> Self {
-        FaultInjectionPrevention {
-            fill_rand_slice,
-            reset_device,
-        }
+    /// for filling a slice with secure random bytes.
+    pub fn new(fill_rand_slice: fn(&mut [u8])) -> Self {
+        FaultInjectionPrevention { fill_rand_slice }
     }
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
     /// AAPCS calling convention that never returns. Inlined to ensure that an attacker needs to skip
-    /// more than one instruction to skip the loop. Use [`never_exit`]!() if you are defining the inner
-    /// most function that never exits for maximum security.
+    /// more than one instruction to exit the code. For maximum security, use [`never_exit`]!() if you
+    /// are defining the inner most function that never exits. Avoid relying on this function if
+    /// possible.
     #[inline(always)]
     pub fn secure_never_exit_func(func: extern "aapcs" fn() -> !) -> ! {
         // SAFETY: func is a valid function pointer with the AAPCS calling convention.
@@ -84,10 +94,18 @@ impl FaultInjectionPrevention {
     /// into other code. Inlined to ensure that the attacker needs to skip more than one instruction
     /// to skip the loop.
     #[inline(always)]
-    pub fn secure_reset_device(&self) -> ! {
-        // TODO: See if we can reset the device without having the user pass in a function pointer.
-        // Instead, do it on our own and use never_exit!().
-        Self::secure_never_exit_func(self.reset_device)
+    pub fn secure_reset_device() -> ! {
+        helper::dsb();
+
+        // SAFETY: AIRCR_ADDR is a valid address for the AIRCR register, and is therefore properly
+        // aligned.
+        unsafe {
+            write_volatile(AIRCR_ADDR as *mut u32, AIRCR_VECTKEY | AIRCR_SYSRESETREQ);
+        }
+
+        helper::dsb();
+
+        never_exit!()
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
@@ -111,7 +129,6 @@ impl FaultInjectionPrevention {
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
     pub fn critical_if(
-        &self,
         mut condition: impl FnMut() -> bool,
         success: impl FnOnce(),
         failure: impl FnOnce(),
@@ -135,7 +152,7 @@ impl FaultInjectionPrevention {
             }
         } else {
             if black_box(!black_box(condition())) {
-                self.secure_reset_device();
+                Self::secure_reset_device();
             }
 
             // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
@@ -144,22 +161,17 @@ impl FaultInjectionPrevention {
             }
         }
 
-        compiler_fence(Ordering::SeqCst);
-
-        // SAFETY: "dsb" is always safe.
-        unsafe { asm!("dsb") }
-
-        compiler_fence(Ordering::SeqCst);
+        helper::dsb();
         Self::secure_random_delay();
 
         if black_box(!black_box(condition())) {
             if black_box(condition()) {
-                self.secure_reset_device();
+                Self::secure_reset_device();
             }
 
             // SAFETY: cond is non-null, properly aligned, and initialized since it comes from a Rust variable.
             if unsafe { read_volatile(&cond as *const bool) } {
-                self.secure_reset_device();
+                Self::secure_reset_device();
             }
 
             // Not moving the parentheses to the outside makes smaller code.
@@ -167,12 +179,12 @@ impl FaultInjectionPrevention {
             black_box(failure());
         } else {
             if black_box(!black_box(condition())) {
-                self.secure_reset_device();
+                Self::secure_reset_device();
             }
 
             // SAFETY: cond is non-null, properly aligned, and initialized since it comes from a Rust variable.
             if unsafe { !read_volatile(&cond as *const bool) } {
-                self.secure_reset_device();
+                Self::secure_reset_device();
             }
 
             // Not moving the parentheses to the outside makes smaller code.
@@ -180,11 +192,6 @@ impl FaultInjectionPrevention {
             black_box(success());
         }
 
-        compiler_fence(Ordering::SeqCst);
-
-        // SAFETY: "dsb" is always safe.
-        unsafe { asm!("dsb") }
-
-        compiler_fence(Ordering::SeqCst);
+        helper::dsb();
     }
 }
