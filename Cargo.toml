@@ -2,5 +2,8 @@
 name = "fault-injection-protection-arm"
 version = "0.1.0"
 edition = "2021"
+authors = ["Brian Mak"]
+categories = ["embedded", "no-std"]
+license = "MIT"
 
 [dependencies]
