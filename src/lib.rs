@@ -10,11 +10,30 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{compiler_fence, Ordering};
 
-/// Basic panic handler loop.
-extern "aapcs" fn panic_loop() -> ! {
-    loop {
-        compiler_fence(Ordering::SeqCst);
-    }
+/// A macro for ensuring that code never exits, even in cases of fault-injection attacks.
+#[macro_export]
+macro_rules! never_exit {
+    () => {
+        // SAFETY: All branches are to a local label.
+        unsafe {
+            // 2b or 2b, that is the question.
+            asm!(
+                "2:",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                "b 2b",
+                options(noreturn),
+            )
+        }
+    };
 }
 
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
@@ -22,7 +41,7 @@ extern "aapcs" fn panic_loop() -> ! {
 #[inline(never)]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    FaultInjectionPrevention::secure_never_exit(panic_loop)
+    never_exit!()
 }
 
 /// State for the fault-injection attack prevention library.
@@ -42,53 +61,44 @@ impl FaultInjectionPrevention {
         }
     }
 
-    /// Ensures that a function call never exits, even in cases of fault-injection attacks. Takes a
-    /// function pointer with the AAPCS calling convention that never returns. Inlined to ensure that
-    /// an attacker needs to skip more than one instruction to exit the loop.
+    /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
+    /// AAPCS calling convention that never returns. Inlined to ensure that an attacker needs to skip
+    /// more than one instruction to skip the loop.
     #[inline(always)]
-    pub fn secure_never_exit(func: extern "aapcs" fn() -> !) -> ! {
-        loop {
-            // SAFETY: func is a valid function pointer with the AAPCS calling convention.
-            unsafe {
-                // 2b or 2b, that is the question.
-                asm!(
-                    "b {}",
-                    "2:",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    "b 2b",
-                    in(reg) func,
-                    clobber_abi("aapcs"),
-                )
-            }
+    pub fn secure_never_exit_func(func: extern "aapcs" fn() -> !) -> ! {
+        // SAFETY: func is a valid function pointer with the AAPCS calling convention.
+        unsafe {
+            // Use asm to eliminate dead code optimization from optimizing out never_exit!().
+            asm!(
+                "b {}",
+                in(reg) func,
+                clobber_abi("aapcs"),
+            )
         }
+
+        never_exit!()
     }
 
-    /// Securely resets the device, ensuring that an attacker cannot break out of the reset. Inlined
-    /// to ensure that the attacker needs to skip more than one instruction to exit the loop.
+    /// Securely resets the device, ensuring that if an attacker skips the reset, they do not break
+    /// into other code. Inlined to ensure that the attacker needs to skip more than one instruction
+    /// to skip the loop.
     #[inline(always)]
     pub fn secure_reset_device(&self) -> ! {
-        Self::secure_never_exit(self.reset_device)
+        Self::secure_never_exit_func(self.reset_device)
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
     /// to delay for. Use [`self::secure_random_delay()`] instead if you don't need to specify the
-    /// range.
+    /// range. Inlined to eliminate branch to this function.
+    #[inline(always)]
     pub fn secure_random_delay_cycles(min_cycles: u32, max_cycles: u32) {
         todo!("Implement secure_random_delay.");
     }
 
     /// A side-channel analysis resistant random delay function. Delays for 10-50 cycles. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
-    /// timing.
+    /// timing. Inlined to eliminate branch to this function.
+    #[inline(always)]
     pub fn secure_random_delay() {
         Self::secure_random_delay_cycles(10, 50);
     }
@@ -97,7 +107,6 @@ impl FaultInjectionPrevention {
     /// Takes a condition closure, a success closure, and a failure closure. The success and failure
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
-    #[inline(never)]
     pub fn critical_if(
         &self,
         mut condition: impl FnMut() -> bool,
