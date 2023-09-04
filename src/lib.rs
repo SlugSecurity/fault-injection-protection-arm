@@ -92,7 +92,7 @@ impl FaultInjectionPrevention {
 
     /// Securely resets the device, ensuring that if an attacker skips the reset, they do not break
     /// into other code. Inlined to ensure that the attacker needs to skip more than one instruction
-    /// to skip the loop.
+    /// to exit the code.
     #[inline(always)]
     pub fn secure_reset_device() -> ! {
         helper::dsb();
@@ -112,7 +112,7 @@ impl FaultInjectionPrevention {
     /// to delay for. Use [`self::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
     #[inline(always)]
-    pub fn secure_random_delay_cycles(min_cycles: u32, max_cycles: u32) {
+    pub fn secure_random_delay_cycles(&self, min_cycles: u32, max_cycles: u32) {
         todo!("Implement secure_random_delay.");
     }
 
@@ -120,8 +120,8 @@ impl FaultInjectionPrevention {
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
     #[inline(always)]
-    pub fn secure_random_delay() {
-        Self::secure_random_delay_cycles(10, 50);
+    pub fn secure_random_delay(&self) {
+        self.secure_random_delay_cycles(10, 50);
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
@@ -129,6 +129,7 @@ impl FaultInjectionPrevention {
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
     pub fn critical_if(
+        &self,
         mut condition: impl FnMut() -> bool,
         success: impl FnOnce(),
         failure: impl FnOnce(),
@@ -162,7 +163,7 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
-        Self::secure_random_delay();
+        self.secure_random_delay();
 
         if black_box(!black_box(condition())) {
             if black_box(condition()) {
