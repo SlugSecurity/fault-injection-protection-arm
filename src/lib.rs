@@ -24,6 +24,12 @@ fn panic(_info: &PanicInfo) -> ! {
     never_exit!()
 }
 
+pub enum SecureBool {
+    True = 0x7FFFFFFF,
+    False = 0x80000000,
+    Error = 0x00000000,
+}
+
 /// A macro for ensuring that code never exits, even in cases of fault-injection attacks.
 #[macro_export]
 macro_rules! never_exit {

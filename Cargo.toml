@@ -7,3 +7,7 @@ categories = ["embedded", "no-std"]
 license = "MIT"
 
 [dependencies]
+build_const = { version = "0.2.2", default-features = false }
+
+[build-dependencies]
+build_const = "0.2.2"
