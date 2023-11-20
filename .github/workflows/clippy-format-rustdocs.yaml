@@ -1,0 +1,49 @@
+name: fmt, clippy, rustdocs
+
+on: push
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  clippy:    
+    runs-on: ubuntu-latest    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run clippy
+        run: |
+          rustup target add thumbv7em-none-eabihf
+          cargo clippy -- -D warnings
+
+  clippy-pedantic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run clippy (non-pedantic)
+        run: |
+          rustup target add thumbv7em-none-eabihf
+          cargo clippy -- -W clippy::pedantic
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run format
+        run: |
+          rustup target add thumbv7em-none-eabihf
+          cargo fmt --check
+
+  rustdoc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run rustdoc
+        run: |
+          rustup target add thumbv7em-none-eabihf
+          cargo doc --no-deps --document-private-items
+      - name: upload artifacts
+        uses: actions/upload-artifact@v3
+        with: 
+          name: rustdoc
+          path: target/thumbv7em-none-eabihf/doc
+          retention-days: 2
