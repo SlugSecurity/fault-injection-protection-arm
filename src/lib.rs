@@ -109,7 +109,7 @@ impl FaultInjectionPrevention {
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
-    /// to delay for. Use [`self::secure_random_delay()`] instead if you don't need to specify the
+    /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
     #[inline(always)]
     pub fn secure_random_delay_cycles(&self, min_cycles: u32, max_cycles: u32) {
