@@ -8,6 +8,7 @@ license = "MIT"
 
 [dependencies]
 build_const = { version = "0.2.2", default-features = false }
+const-random = { version = "0.1.17" }
 
 [build-dependencies]
 build_const = "0.2.2"
