@@ -11,10 +11,25 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
+extern crate const_random;
 
+// Application Interrupt and Reset Control Register
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
+
+const CRITICAL_BOOL: isize = const_random::const_random!(isize);
+const CRITICAL_ERROR: isize = const_random::const_random!(isize);
+
+#[allow(missing_docs)]
+#[derive(PartialEq)]
+/// Large constants values for true and false. This makes it so attackers need
+/// to do more than flip a signle bit for a true/false flip.
+pub enum SecureBool {
+    True = CRITICAL_BOOL,
+    False = !CRITICAL_BOOL,
+    Error = CRITICAL_ERROR,
+}
 
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
 /// allow breakpoints to be set.
@@ -22,12 +37,6 @@ const AIRCR_SYSRESETREQ: u32 = 1 << 2;
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     never_exit!()
-}
-
-pub enum SecureBool {
-    True = 0x7FFFFFFF,
-    False = 0x80000000,
-    Error = 0x00000000,
 }
 
 /// A macro for ensuring that code never exits, even in cases of fault-injection attacks.
@@ -143,19 +152,18 @@ impl FaultInjectionPrevention {
         // TODO: Use enum with constant large values for true, false, and error. Default to error.
         // When checking for error case, check for not true and not false in case initializing with
         // error value was skipped. Warning below is for tracking this TODO.
-        let x = 5;
-        let mut cond = false;
+        let mut cond = SecureBool::False;
 
         // Default to false, use volatile to ensure the write actually occurs.
         // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
         unsafe {
-            write_volatile(&mut cond as *mut bool, false);
+            write_volatile(&mut cond as *mut SecureBool, SecureBool::False);
         }
 
         if black_box(!black_box(condition())) {
             // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
             unsafe {
-                write_volatile(&mut cond as *mut bool, false);
+                write_volatile(&mut cond as *mut SecureBool, SecureBool::False);
             }
         } else {
             if black_box(!black_box(condition())) {
@@ -164,7 +172,7 @@ impl FaultInjectionPrevention {
 
             // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
             unsafe {
-                write_volatile(&mut cond as *mut bool, true);
+                write_volatile(&mut cond as *mut SecureBool, SecureBool::True);
             }
         }
 
@@ -177,7 +185,7 @@ impl FaultInjectionPrevention {
             }
 
             // SAFETY: cond is non-null, properly aligned, and initialized since it comes from a Rust variable.
-            if unsafe { read_volatile(&cond as *const bool) } {
+            if unsafe { read_volatile(&cond as *const SecureBool) != SecureBool::False } {
                 Self::secure_reset_device();
             }
 
@@ -190,7 +198,7 @@ impl FaultInjectionPrevention {
             }
 
             // SAFETY: cond is non-null, properly aligned, and initialized since it comes from a Rust variable.
-            if unsafe { !read_volatile(&cond as *const bool) } {
+            if unsafe { read_volatile(&cond as *const SecureBool) != SecureBool::True } {
                 Self::secure_reset_device();
             }
 
