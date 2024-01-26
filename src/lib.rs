@@ -202,7 +202,7 @@ impl FaultInjectionPrevention {
         helper::dsb();
     }
 
-    pub fn stack_carany(&self, run: impl FnOnce()) {
+    pub fn stack_canary(&self, run: impl FnOnce()) {
         let canary: u32 = const_random!(u32);
         helper::dsb();
         run();
