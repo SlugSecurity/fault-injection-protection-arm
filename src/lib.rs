@@ -195,4 +195,7 @@ impl FaultInjectionPrevention {
 
         helper::dsb();
     }
+
+    pub fn critical_read() {}
+    pub fn critical_write() {}
 }
