@@ -6,11 +6,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  clippy:    
-    runs-on: ubuntu-latest    
+  clippy:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Run clippy
+      - name: Run clippy (non-pedantic)
         run: |
           rustup target add thumbv7em-none-eabihf
           cargo clippy -- -D warnings
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Run clippy (non-pedantic)
+      - name: Run clippy (pedantic)
         run: |
           rustup target add thumbv7em-none-eabihf
           cargo clippy -- -W clippy::pedantic
@@ -40,7 +40,7 @@ jobs:
       - name: Run rustdoc
         run: |
           rustup target add thumbv7em-none-eabihf
-          cargo doc --no-deps --document-private-items
+          RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
       - name: upload artifacts
         uses: actions/upload-artifact@v3
         with: 
