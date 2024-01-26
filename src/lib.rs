@@ -202,8 +202,13 @@ impl FaultInjectionPrevention {
         helper::dsb();
     }
 
+    /// Stack canaries should be used anywhere where there is user input or
+    /// potential for user input, so overflow via glitching is difficult at
+    /// these points
     pub fn stack_canary(&self, run: impl FnOnce()) {
-        let canary: u32 = const_random!(u32);
+        // should be generated at runtime
+        let canary: u64 = const_random!(u64);
+
         helper::dsb();
         run();
         self.critical_if(|| canary == canary, || (), || Self::secure_reset_device());
