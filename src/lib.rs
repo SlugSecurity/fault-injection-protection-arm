@@ -12,6 +12,8 @@ use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
+use const_random::const_random;
+
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
@@ -198,5 +200,12 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
+    }
+
+    pub fn stack_carany(&self, run: impl FnOnce()) {
+        let canary: u32 = const_random!(u32);
+        helper::dsb();
+        run();
+        self.critical_if(|| canary == canary, || (), || Self::secure_reset_device());
     }
 }
