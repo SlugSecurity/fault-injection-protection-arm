@@ -8,6 +8,7 @@
 mod helper;
 
 use core::arch::asm;
+use core::clone;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
@@ -196,6 +197,57 @@ impl FaultInjectionPrevention {
         helper::dsb();
     }
 
-    pub fn critical_read() {}
-    pub fn critical_write() {}
+    pub fn critical_read<T>(&self, src: *const T) -> T {
+        let mut _data: T;
+
+        // All volatile memory reads/writes and ordering-sensitive operations
+        // should use ARM dsb fence to guarantee no re-ordering in case volatile
+        // is reordered due to detected no side effects
+        helper::dsb();
+
+        unsafe {
+            _data = core::ptr::read_volatile(src);
+        }
+        unsafe {
+            _data = core::ptr::read_volatile(src);
+        }
+        unsafe {
+            _data = core::ptr::read_volatile(src);
+        }
+        _data
+    }
+
+    pub fn critical_write<T>(&self, dst: *mut T, src: T)
+    where
+        T: core::cmp::PartialEq + core::marker::Copy,
+    {
+        // All volatile memory reads/writes and ordering-sensitive operations
+        // should use ARM dsb fence to guarantee no re-ordering in case volatile
+        // is reordered due to detected no side effects
+        helper::dsb();
+
+        // Sensitive memory reads should be performed multiple times, sensitive
+        // writes should be verified with multiple reads, need to verify it's the
+        // same each time, use volatile to ensure actual reads and writes are done
+
+        // SAFETY:
+        unsafe { core::ptr::write_volatile(dst, src) }
+        self.critical_if(
+            || self.critical_read(dst) == src,
+            || (),
+            || Self::secure_reset_device(),
+        );
+        unsafe { core::ptr::write_volatile(dst, src) }
+        self.critical_if(
+            || self.critical_read(dst) == src,
+            || (),
+            || Self::secure_reset_device(),
+        );
+        unsafe { core::ptr::write_volatile(dst, src) }
+        self.critical_if(
+            || self.critical_read(dst) == src,
+            || (),
+            || Self::secure_reset_device(),
+        );
+    }
 }
