@@ -207,7 +207,9 @@ impl FaultInjectionPrevention {
     /// these points
     pub fn stack_canary(&self, run: impl FnOnce()) {
         // should be generated at runtime
-        let canary: u64 = const_random!(u64);
+        let mut random_bytes: [u8; 8] = [0; 8];
+        (self.fill_rand_slice)(random_bytes.as_mut_slice());
+        let canary: u64 = u64::from_le_bytes(random_bytes);
 
         helper::dsb();
         run();
