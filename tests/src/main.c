@@ -18,6 +18,7 @@
 int main(void) {
     int userPassword;
 
+    LED_On(LED1);
     MXC_Delay(500000);
     printf("Hello World!\n");
     printf("Enter password:\n");
@@ -29,7 +30,7 @@ int main(void) {
         if (userPassword == 6) {
             printf("Password correct.\n");
             MXC_Delay(500000);
-            LED_Off(LED);
+            LED_Off(LED1);
             MXC_Delay(500000);
             break;
         } else {
