@@ -11,6 +11,8 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
+use cortex_m::asm::delay;
+use rand::Rng;
 
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
@@ -108,17 +110,67 @@ impl FaultInjectionPrevention {
         never_exit!()
     }
 
+    /// Blocks using CPU cycles.
+    ///
+    /// # Arguments
+    ///
+    /// * `cycles` - The number of cycles to delay.
+    ///
+    /// # Safety
+    ///
+    /// This function assumes that `asm::delay` is safe for the hardware.
+    fn delay(&self, cycles: u32) -> Result<(), &'static str> {
+        asm::delay(cycles);
+        Ok(())
+    }
+
+    /// Generates a secure random number within the specified range.
+    ///
+    /// # Arguments
+    ///
+    /// * `min` - The minimum value of the range.
+    /// * `max` - The maximum value of the range.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the random number or an error message.
+    fn generate_secure_random(&self, min: u32, max: u32) -> Result<u32, &'static str> {
+        let mut rng = rand::thread_rng();
+        rng.gen_range(min..=max).map_err(|_| "Failed to generate secure random number")
+    }
+
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
     /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
+    /// 
+    /// # Arguments
+    ///
+    /// * `min_cycles` - The minimum number of cycles to delay.
+    /// * `max_cycles` - The maximum number of cycles to delay.
+    ///
+    /// # Safety
+    ///
+    /// This function assumes that `asm::delay` is safe for the given hardware.
     #[inline(always)]
     pub fn secure_random_delay_cycles(&self, min_cycles: u32, max_cycles: u32) {
-        todo!("Implement secure_random_delay.");
+        if min_cycles > max_cycles {
+            return Err("Invalid input: min_cycles is greater than max_cycles");
+        }
+
+                // Use core::result::Result to handle potential errors
+                if let Ok(random_cycles) = self.generate_secure_random(min_cycles, max_cycles) {
+                    // Use core::hint::unreachable_unchecked() to safely handle unexpected errors
+                    let _ = self.delay(random_cycles).map_err(|_| core::hint::unreachable_unchecked());
+                }
     }
 
     /// A side-channel analysis resistant random delay function. Delays for 10-50 cycles. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
+    /// 
+    /// # Safety
+    ///
+    /// This function assumes that `asm::delay` is safe for the given hardware.
     #[inline(always)]
     pub fn secure_random_delay(&self) {
         self.secure_random_delay_cycles(10, 50);
