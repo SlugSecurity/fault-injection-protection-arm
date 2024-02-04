@@ -8,7 +8,6 @@
 mod helper;
 
 use core::arch::asm;
-use core::clone;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
@@ -206,18 +205,33 @@ impl FaultInjectionPrevention {
         helper::dsb();
 
         unsafe {
-            _data = core::ptr::read_volatile(src);
+            black_box(_data = core::ptr::read_volatile(src));
         }
         unsafe {
-            _data = core::ptr::read_volatile(src);
+            black_box(_data = core::ptr::read_volatile(src));
         }
         unsafe {
-            _data = core::ptr::read_volatile(src);
+            black_box(_data = core::ptr::read_volatile(src));
         }
-        _data
+        unsafe {
+            return core::ptr::read_volatile(&_data as *const T);
+        }
     }
 
-    pub fn critical_write<T>(&self, dst: *mut T, src: T)
+    /// The argument 'write_op' closure needs to use a volatile write function.
+
+    /// ```
+    /// let fip = FaultInjectionPrevention::new(|_| {});
+    ///
+    /// let mut dst: [u8; 20] = [0; 20];
+    /// let src: [u8; 20] = [b'A'; 20];
+    ///
+    /// fip.critical_write(&mut dst as *mut [u8; 20], src, || unsafe {
+    ///     core::ptr::write_volatile(&mut dst as *mut [u8; 20], src)
+    /// });
+    /// ```
+
+    pub fn critical_write<T>(&self, dst: *mut T, src: T, mut write_op: impl FnMut())
     where
         T: core::cmp::PartialEq + core::marker::Copy,
     {
@@ -231,19 +245,19 @@ impl FaultInjectionPrevention {
         // same each time, use volatile to ensure actual reads and writes are done
 
         // SAFETY:
-        unsafe { core::ptr::write_volatile(dst, src) }
+        write_op();
         self.critical_if(
             || self.critical_read(dst) == src,
             || (),
             || Self::secure_reset_device(),
         );
-        unsafe { core::ptr::write_volatile(dst, src) }
+        write_op();
         self.critical_if(
             || self.critical_read(dst) == src,
             || (),
             || Self::secure_reset_device(),
         );
-        unsafe { core::ptr::write_volatile(dst, src) }
+        write_op();
         self.critical_if(
             || self.critical_read(dst) == src,
             || (),
