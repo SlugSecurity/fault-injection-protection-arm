@@ -124,6 +124,7 @@ impl FaultInjectionPrevention {
     fn generate_secure_random(&self, min: u32, max: u32) -> Result<u32, &'static str> {
         let mut rng = rand::thread_rng();
         rng.gen_range(min..=max).map_err(|_| "Failed to generate secure random number")
+        Ok(())
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
