@@ -7,3 +7,5 @@ categories = ["embedded", "no-std"]
 license = "MIT"
 
 [dependencies]
+cortex-m = "0.7.7"
+rand = "0.8.5"
