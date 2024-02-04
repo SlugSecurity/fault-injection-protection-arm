@@ -11,7 +11,7 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
-use core::result::Result;
+use core::result;
 use cortex_m::asm::delay;
 use rand::Rng;
 
@@ -123,8 +123,7 @@ impl FaultInjectionPrevention {
     /// A `Result` containing the random number or an error message.
     fn generate_secure_random(&self, min: u32, max: u32) -> Result<u32, &'static str> {
         let mut rng = rand::thread_rng();
-        rng.gen_range(min..=max).map_err(|_| "Failed to generate secure random number")
-        Ok(())
+        return Ok(rng.gen_range(min..=max));
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
@@ -144,12 +143,11 @@ impl FaultInjectionPrevention {
         if min_cycles > max_cycles {
             return Err("Invalid input: min_cycles is greater than max_cycles");
         }
-
-        if let Ok(random_cycles) = self.generate_secure_random(min_cycles, max_cycles) {
+        else if let Ok(random_cycles) = self.generate_secure_random(min_cycles, max_cycles) {
             asm::delay(random_cycles);
-            Ok(())
+            return Ok(());
         } else {
-            Err("Failed to generate secure random delay")
+            return Err("Failed to generate secure random delay");
         }
     }
 
