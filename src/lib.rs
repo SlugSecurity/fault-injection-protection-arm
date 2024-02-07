@@ -139,14 +139,15 @@ impl FaultInjectionPrevention {
     ///
     /// This function assumes that `asm::delay` is safe for the given hardware.
     #[inline(always)]
-    pub fn secure_random_delay_cycles(&self, min_cycles: u32, max_cycles: u32) -> Result<(), &'static str> {
+    pub fn secure_random_delay_cycles(&self, min_cycles: u32, max_cycles: u32, delay: &mut Delay) -> Result<(), &'static str> {
         if min_cycles > max_cycles {
             return Err("Invalid input: min_cycles is greater than max_cycles");
         }
         else if let Ok(random_cycles) = self.generate_secure_random(min_cycles, max_cycles) {
-            asm::delay(random_cycles);
+            delay.delay_ms(random_cycles);
             return Ok(());
-        } else {
+        } 
+        else {
             return Err("Failed to generate secure random delay");
         }
     }
