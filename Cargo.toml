@@ -9,3 +9,4 @@ license = "MIT"
 [dependencies]
 cortex-m = "0.7.7"
 rand = "0.8.5"
+getrandom = "0.2.12"
