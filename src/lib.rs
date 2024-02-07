@@ -196,8 +196,12 @@ impl FaultInjectionPrevention {
         helper::dsb();
     }
 
-    pub fn critical_read<T>(&self, src: *const T) -> T {
-        let mut _data: T;
+    pub fn critical_read<T>(&self, src: *const T) -> T
+    where
+        T: PartialEq + Copy + Default,
+    {
+        let mut data1: T = black_box(T::default());
+        let mut data2: T = black_box(T::default());
 
         // All volatile memory reads/writes and ordering-sensitive operations
         // should use ARM dsb fence to guarantee no re-ordering in case volatile
@@ -205,16 +209,25 @@ impl FaultInjectionPrevention {
         helper::dsb();
 
         unsafe {
-            black_box(_data = core::ptr::read_volatile(src));
+            write_volatile(black_box(&mut data1), read_volatile(black_box(src)));
         }
+
         unsafe {
-            black_box(_data = core::ptr::read_volatile(src));
+            write_volatile(black_box(&mut data2), read_volatile(black_box(src)));
         }
+
         unsafe {
-            black_box(_data = core::ptr::read_volatile(src));
+            write_volatile(black_box(&mut data1), read_volatile(black_box(src)));
         }
+
         unsafe {
-            return core::ptr::read_volatile(&_data as *const T);
+            write_volatile(black_box(&mut data2), read_volatile(black_box(src)));
+        }
+
+        self.critical_if(|| data1 == data2, || (), || Self::secure_reset_device());
+
+        unsafe {
+            return read_volatile(black_box(&data1));
         }
     }
 
@@ -233,7 +246,7 @@ impl FaultInjectionPrevention {
 
     pub fn critical_write<T>(&self, dst: *mut T, src: T, mut write_op: impl FnMut())
     where
-        T: core::cmp::PartialEq + core::marker::Copy,
+        T: PartialEq + Copy + Default,
     {
         // All volatile memory reads/writes and ordering-sensitive operations
         // should use ARM dsb fence to guarantee no re-ordering in case volatile
@@ -245,21 +258,23 @@ impl FaultInjectionPrevention {
         // same each time, use volatile to ensure actual reads and writes are done
 
         // SAFETY:
-        write_op();
+        black_box(write_op());
         self.critical_if(
-            || self.critical_read(dst) == src,
+            || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
-        write_op();
+
+        black_box(write_op());
         self.critical_if(
-            || self.critical_read(dst) == src,
+            || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
-        write_op();
+
+        black_box(write_op());
         self.critical_if(
-            || self.critical_read(dst) == src,
+            || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
