@@ -12,7 +12,7 @@ use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result;
-use cortex_m::asm::delay;
+use cortex_m::delay::Delay;
 use rand::Rng;
 
 const AIRCR_ADDR: u32 = 0xE000ED0C;
@@ -114,37 +114,33 @@ impl FaultInjectionPrevention {
     /// Generates a secure random number within the specified range.
     ///
     /// # Arguments
-    ///
     /// * `min` - The minimum value of the range.
     /// * `max` - The maximum value of the range.
     ///
     /// # Returns
-    ///
     /// A `Result` containing the random number or an error message.
     fn generate_secure_random(&self, min: u32, max: u32) -> Result<u32, &'static str> {
         let mut rng = rand::thread_rng();
         return Ok(rng.gen_range(min..=max));
     }
 
-    /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
+    /// A side-channel analysis resistant random delay function. Takes a range of possible ms
     /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
     /// 
     /// # Arguments
-    ///
-    /// * `min_cycles` - The minimum number of cycles to delay.
-    /// * `max_cycles` - The maximum number of cycles to delay.
+    /// * `min_ms` - The minimum number of ms to delay.
+    /// * `max_ms` - The maximum number of ms to delay.
     ///
     /// # Safety
-    ///
-    /// This function assumes that `asm::delay` is safe for the given hardware.
+    /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay_cycles(&self, min_cycles: u32, max_cycles: u32, delay: &mut Delay) -> Result<(), &'static str> {
-        if min_cycles > max_cycles {
-            return Err("Invalid input: min_cycles is greater than max_cycles");
+    pub fn secure_random_delay_cycles(&self, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), &'static str> {
+        if min_ms > max_ms {
+            return Err("Invalid input: min_ms is greater than max_ms");
         }
-        else if let Ok(random_cycles) = self.generate_secure_random(min_cycles, max_cycles) {
-            delay.delay_ms(random_cycles);
+        else if let Ok(random_ms) = self.generate_secure_random(min_ms, max_ms) {
+            delay.delay_ms(random_ms);
             return Ok(());
         } 
         else {
@@ -152,13 +148,12 @@ impl FaultInjectionPrevention {
         }
     }
 
-    /// A side-channel analysis resistant random delay function. Delays for 10-50 cycles. Use after
+    /// A side-channel analysis resistant random delay function. Delays for 10-50 ms. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
     /// 
     /// # Safety
-    ///
-    /// This function assumes that `asm::delay` is safe for the given hardware.
+    /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
     pub fn secure_random_delay(&self) {
         self.secure_random_delay_cycles(10, 50);
