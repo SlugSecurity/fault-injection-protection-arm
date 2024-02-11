@@ -196,9 +196,10 @@ impl FaultInjectionPrevention {
         helper::dsb();
     }
 
-    pub fn critical_read<T>(&self, src: *const T) -> T
+    #[inline(always)]
+    pub fn critical_read<T>(&self, src: &T) -> T
     where
-        T: PartialEq + Copy + Default,
+        T: Eq + Copy + Default,
     {
         let mut data1: T = black_box(T::default());
         let mut data2: T = black_box(T::default());
@@ -207,6 +208,17 @@ impl FaultInjectionPrevention {
         // should use ARM dsb fence to guarantee no re-ordering in case volatile
         // is reordered due to detected no side effects
         helper::dsb();
+
+        // SAFETY:
+        // * src is valid for reads (justification needed)
+        //
+        // * src is properly initialized (justification needed)
+        //
+        // * src is pointing to a properly aligned value of type T (justification needed)
+        //
+        // * dst is be valid for writes (justification needed)
+        //
+        // * dst is properly aligned (justification needed)
 
         unsafe {
             write_volatile(black_box(&mut data1), read_volatile(black_box(src)));
@@ -226,9 +238,7 @@ impl FaultInjectionPrevention {
 
         self.critical_if(|| data1 == data2, || (), || Self::secure_reset_device());
 
-        unsafe {
-            return read_volatile(black_box(&data1));
-        }
+        return black_box(data1);
     }
 
     /// The argument 'write_op' closure needs to use a volatile write function.
@@ -244,20 +254,23 @@ impl FaultInjectionPrevention {
     /// });
     /// ```
 
-    pub fn critical_write<T>(&self, dst: *mut T, src: T, mut write_op: impl FnMut())
+    #[inline(always)]
+    pub unsafe fn critical_write<T>(&self, dst: &mut T, src: T, mut write_op: impl FnMut())
     where
-        T: PartialEq + Copy + Default,
+        T: Eq + Copy + Default,
     {
         // All volatile memory reads/writes and ordering-sensitive operations
         // should use ARM dsb fence to guarantee no re-ordering in case volatile
         // is reordered due to detected no side effects
         helper::dsb();
 
-        // Sensitive memory reads should be performed multiple times, sensitive
-        // writes should be verified with multiple reads, need to verify it's the
-        // same each time, use volatile to ensure actual reads and writes are done
-
         // SAFETY:
+        // * src is valid for reads (justification needed)
+        //
+        // * src is properly initialized (justification needed)
+        //
+        // * src is pointing to a properly aligned value of type T (justification needed)
+
         black_box(write_op());
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
