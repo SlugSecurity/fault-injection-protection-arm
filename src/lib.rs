@@ -13,7 +13,7 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result;
 use cortex_m::delay::Delay;
-use rand::Rng;
+use rand_core::{RngCore, CryptoRng};
 
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
@@ -114,14 +114,22 @@ impl FaultInjectionPrevention {
     /// Generates a secure random number within the specified range.
     ///
     /// # Arguments
+    /// * `rng` - Cryptographically secure rng
     /// * `min` - The minimum value of the range.
     /// * `max` - The maximum value of the range.
     ///
     /// # Returns
     /// A `Result` containing the random number or an error message.
-    fn generate_secure_random(&self, min: u32, max: u32) -> Result<u32, &'static str> {
-        let mut rng = rand::thread_rng();
-        return Ok(rng.gen_range(min..=max));
+    fn generate_secure_random<R>(rng: &mut R, min: u32, max: u32) -> Result<u32, &'static str>
+    where
+        R: RngCore + CryptoRng,
+    {
+        if min > max {
+            return Err("Invalid range: min is greater than max");
+        }
+        let range = max - min + 1; 
+        let random_value = rng.next_u32() % range + min; 
+        Ok(random_value)
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible ms
@@ -129,22 +137,24 @@ impl FaultInjectionPrevention {
     /// range. Inlined to eliminate branch to this function.
     /// 
     /// # Arguments
+    /// * `rng` - Cryptographically secure rng
     /// * `min_ms` - The minimum number of ms to delay.
     /// * `max_ms` - The maximum number of ms to delay.
+    /// * `delay` - Delay instance
     ///
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay_cycles(&self, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), &'static str> {
-        if min_ms > max_ms {
-            return Err("Invalid input: min_ms is greater than max_ms");
-        }
-        else if let Ok(random_ms) = self.generate_secure_random(min_ms, max_ms) {
-            delay.delay_ms(random_ms);
-            return Ok(());
-        } 
-        else {
-            return Err("Failed to generate secure random delay");
+    pub fn secure_random_delay_cycles<R>(&self, rng: &mut R, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), &'static str>
+    where
+        R: RngCore + CryptoRng,
+    {
+        match generate_secure_random(rng, min_ms, max_ms) {
+            Ok(random_ms) => {
+                delay.delay_ms(random_ms);
+                Ok(())
+            },
+            Err(e) => Err(e),
         }
     }
 
