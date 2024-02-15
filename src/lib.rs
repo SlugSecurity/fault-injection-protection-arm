@@ -14,6 +14,8 @@ use core::ptr::{read_volatile, write_volatile};
 
 use const_random::const_random;
 
+static mut reference_canary: u64 = 0;
+
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
@@ -205,11 +207,26 @@ impl FaultInjectionPrevention {
     /// Stack canaries should be used anywhere where there is user input or
     /// potential for user input, so overflow via glitching is difficult at
     /// these points
+    /// ```
+    /// let mut user_input = [b'A'; 100];
+    /// let mut buffer: [u8; 16] = [0; 16];
+    /// fip.stack_canary(|| unsafe {
+    ///     copy(user_input.as_ptr(), buffer.as_mut_ptr(), user_input.len())
+    /// });
+    /// ```
+
     pub fn stack_canary(&self, run: impl FnOnce()) {
         // should be generated at runtime
-        let mut random_bytes: [u8; 8] = [0; 8];
+        let mut random_bytes: [u8; 8] = [0xF; 8];
         (self.fill_rand_slice)(random_bytes.as_mut_slice());
-        let canary: u64 = u64::from_le_bytes(random_bytes);
+        let mut canary: u64 = 0;
+        unsafe {
+            self.critical_write(&reference_canary, u64::from_le_bytes(random_bytes), || {
+                write_volatile(&mut reference_canary, u64::from_le_bytes(random_bytes))
+            });
+
+            canary = reference_canary;
+        }
 
         helper::dsb();
         run();
