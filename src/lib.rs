@@ -196,6 +196,10 @@ impl FaultInjectionPrevention {
         helper::dsb();
     }
 
+    /// To be used for a critical memory reads that should be resistant to
+    /// fault-injection attacks. If a fault injection is detected, the board
+    /// securely resets itself.
+
     #[inline(always)]
     pub fn critical_read<T>(&self, src: &T) -> T
     where
@@ -210,15 +214,17 @@ impl FaultInjectionPrevention {
         helper::dsb();
 
         // SAFETY:
-        // * src is valid for reads (justification needed)
+        // * src is valid for reads because it is a rust reference
         //
-        // * src is properly initialized (justification needed)
+        // * src is properly initialized
         //
-        // * src is pointing to a properly aligned value of type T (justification needed)
+        // * src is pointing to a properly aligned value of type T because it is
+        // a rust refernce
         //
-        // * dst is be valid for writes (justification needed)
+        // * dst is be valid for writes because type T must implement the
+        // default trait.
         //
-        // * dst is properly aligned (justification needed)
+        // * dst is properly aligned
 
         unsafe {
             write_volatile(black_box(&mut data1), read_volatile(black_box(src)));
@@ -238,24 +244,39 @@ impl FaultInjectionPrevention {
 
         self.critical_if(|| data1 == data2, || (), || Self::secure_reset_device());
 
-        return black_box(data1);
+        black_box(data1)
     }
 
-    /// The argument 'write_op' closure needs to use a volatile write function.
+    /// To be used for a critical memory write that should be resistant to
+    /// fault-injection attacks. The write operation closure argument should be
+    /// a call to the write operation that needs to be redundent.
+    ///
+    /// If a fault injection is detected, the board securely resets itself.
+
+    ///
+    /// # Safety
+    ///
+    /// Callers must ensure that the following condition is met:
+    /// * The 'write_op' clousure must use a volatile write function.
+    /// * src is valid for reads
+    /// * src is properly initialized
+    /// * src is pointing to a properly aligned value of type T
+    /// * dst must be valid for writes
+    /// * dst must be properly aligned
 
     /// ```
     /// let fip = FaultInjectionPrevention::new(|_| {});
     ///
-    /// let mut dst: [u8; 20] = [0; 20];
-    /// let src: [u8; 20] = [b'A'; 20];
+    /// let mut buffer: [u8; 20] = [0; 20];
+    /// let data: [u8; 20] = [b'A'; 20];
     ///
-    /// fip.critical_write(&mut dst as *mut [u8; 20], src, || unsafe {
-    ///     core::ptr::write_volatile(&mut dst as *mut [u8; 20], src)
-    /// });
+    /// unsafe {
+    ///    fip.critical_write(&mut buffer, data, |dst, src| write_volatile(dst, src));
+    /// }
     /// ```
 
     #[inline(always)]
-    pub unsafe fn critical_write<T>(&self, dst: &mut T, src: T, mut write_op: impl FnMut())
+    pub unsafe fn critical_write<T>(&self, dst: &mut T, src: T, mut write_op: impl FnMut(&mut T, T))
     where
         T: Eq + Copy + Default,
     {
@@ -264,28 +285,24 @@ impl FaultInjectionPrevention {
         // is reordered due to detected no side effects
         helper::dsb();
 
-        // SAFETY:
-        // * src is valid for reads (justification needed)
-        //
-        // * src is properly initialized (justification needed)
-        //
-        // * src is pointing to a properly aligned value of type T (justification needed)
-
-        black_box(write_op());
+        #[allow(clippy::unit_arg)]
+        black_box(write_op(dst, src));
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
 
-        black_box(write_op());
+        #[allow(clippy::unit_arg)]
+        black_box(write_op(dst, src));
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
 
-        black_box(write_op());
+        #[allow(clippy::unit_arg)]
+        black_box(write_op(dst, src));
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
