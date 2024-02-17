@@ -285,24 +285,21 @@ impl FaultInjectionPrevention {
         // is reordered due to detected no side effects
         helper::dsb();
 
-        #[allow(clippy::unit_arg)]
-        black_box(write_op(dst, src));
+        write_op(black_box(dst), black_box(src));
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
 
-        #[allow(clippy::unit_arg)]
-        black_box(write_op(dst, src));
+        write_op(black_box(dst), black_box(src));
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
             || Self::secure_reset_device(),
         );
 
-        #[allow(clippy::unit_arg)]
-        black_box(write_op(dst, src));
+        write_op(black_box(dst), black_box(src));
         self.critical_if(
             || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
             || (),
