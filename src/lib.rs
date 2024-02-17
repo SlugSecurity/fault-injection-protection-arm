@@ -273,6 +273,13 @@ impl FaultInjectionPrevention {
     /// unsafe {
     ///    fip.critical_write(&mut buffer, data, |dst, src| write_volatile(dst, src));
     /// }
+    ///
+    /// // 'from_ref' is available in rust version 1.76.0
+    /// unsafe {
+    ///    fip.critical_write(&mut buffer, data, |dst, src| {
+    ///         flash_controller.write(from_ref(dst) as u32, &src, &SystemClock)
+    ///    });
+    /// }
     /// ```
 
     #[inline(always)]
