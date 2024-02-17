@@ -12,17 +12,11 @@ use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
-use const_random::const_random;
-
 static mut reference_canary: u64 = 0;
 
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
-
-struct StackCanary {
-    val: u32,
-}
 
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
 /// allow breakpoints to be set.
@@ -216,20 +210,23 @@ impl FaultInjectionPrevention {
     /// ```
 
     pub fn stack_canary(&self, run: impl FnOnce()) {
-        // should be generated at runtime
-        let mut random_bytes: [u8; 8] = [0xF; 8];
-        (self.fill_rand_slice)(random_bytes.as_mut_slice());
-        let mut canary: u64 = 0;
-        unsafe {
-            self.critical_write(&reference_canary, u64::from_le_bytes(random_bytes), || {
-                write_volatile(&mut reference_canary, u64::from_le_bytes(random_bytes))
-            });
+        // force canary to be allocated to stack instead of register
+        let mut canary: u64 = black_box(0);
 
+        unsafe {
+            // generate a new global canary at runtime using CryptoRng reference
+            // stored in fip struct
+
+            // use critical_write in future
             canary = reference_canary;
         }
 
         helper::dsb();
         run();
-        self.critical_if(|| canary == canary, || (), || Self::secure_reset_device());
+        self.critical_if(
+            || unsafe { canary == reference_canary },
+            || (),
+            || Self::secure_reset_device(),
+        );
     }
 }
