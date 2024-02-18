@@ -19,6 +19,14 @@ const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
 
+/// Secure random delay errors
+/// 
+/// # Errors
+/// * `InvalidRange` - The provided values are out of an expected range.
+enum RandomError {
+    InvalidRange,
+}
+
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
 /// allow breakpoints to be set.
 #[inline(never)]
@@ -62,15 +70,22 @@ macro_rules! never_exit {
 }
 
 /// State for the fault-injection attack prevention library.
-pub struct FaultInjectionPrevention {
+pub struct FaultInjectionPrevention<R> 
+where
+    R: RngCore + CryptoRng,
+{
     fill_rand_slice: fn(&mut [u8]),
+    rng: R,
 }
 
-impl FaultInjectionPrevention {
+impl<R> FaultInjectionPrevention<R> 
+where
+    R: RngCore + CryptoRng,
+{
     /// Initializes the state of the fault-injection attack prevention library. Takes a closure for
     /// for filling a slice with secure random bytes.
-    pub fn new(fill_rand_slice: fn(&mut [u8])) -> Self {
-        FaultInjectionPrevention { fill_rand_slice }
+    pub fn new(fill_rand_slice: fn(&mut [u8]), rng: R) -> Self {
+        FaultInjectionPrevention { fill_rand_slice, rng }
     }
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
@@ -120,15 +135,12 @@ impl FaultInjectionPrevention {
     ///
     /// # Returns
     /// A `Result` containing the random number or an error message.
-    fn generate_secure_random<R>(rng: &mut R, min: u32, max: u32) -> Result<u32, &'static str>
-    where
-        R: RngCore + CryptoRng,
-    {
+    fn generate_secure_random(&mut self, min: u32, max: u32) -> Result<u32, RandomError> {
         if min > max {
-            return Err("Invalid range: min is greater than max");
+            return Err(RandomError::InvalidRange);
         }
-        let range = max - min + 1; 
-        let random_value = rng.next_u32() % range + min; 
+        let range = max - min + 1;
+        let random_value = self.rng.next_u32() % range + min;
         Ok(random_value)
     }
 
@@ -145,17 +157,10 @@ impl FaultInjectionPrevention {
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay_cycles<R>(&self, rng: &mut R, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), &'static str>
-    where
-        R: RngCore + CryptoRng,
-    {
-        match generate_secure_random(rng, min_ms, max_ms) {
-            Ok(random_ms) => {
-                delay.delay_ms(random_ms);
-                Ok(())
-            },
-            Err(e) => Err(e),
-        }
+    pub fn secure_random_delay_cycles(&mut self, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), RandomError> {
+        let random_ms = generate_secure_random(&mut self.rng, min_ms, max_ms)?;
+        delay.delay_ms(random_ms);
+        Ok(())
     }
 
     /// A side-channel analysis resistant random delay function. Delays for 10-50 ms. Use after
