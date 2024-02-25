@@ -12,7 +12,44 @@ use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
-static mut reference_canary: u64 = 0;
+struct RefCanaryStack {
+    reference_canary_vec: [u64; 50],
+    counter: usize,
+}
+
+impl RefCanaryStack {
+    const fn new() -> Self {
+        RefCanaryStack {
+            reference_canary_vec: [0u64; 50],
+            counter: 0,
+        }
+    }
+
+    #[inline(always)]
+    fn push(&mut self, new_canary: u64) {
+        if self.counter >= self.reference_canary_vec.len() - 1 {
+            panic!()
+        }
+
+        self.counter += 1;
+        self.reference_canary_vec[self.counter] = new_canary;
+    }
+
+    #[inline(always)]
+    fn pop(&mut self) -> u64 {
+        let popped_value = self.reference_canary_vec[self.counter];
+        self.reference_canary_vec[self.counter] = 0u64;
+        self.counter -= 1;
+        popped_value
+    }
+
+    #[inline(always)]
+    fn peek(&self) -> u64 {
+        self.reference_canary_vec[self.counter]
+    }
+}
+
+static mut REF_CANARY: RefCanaryStack = RefCanaryStack::new();
 
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
@@ -209,6 +246,7 @@ impl FaultInjectionPrevention {
     /// });
     /// ```
 
+    #[inline(never)]
     pub fn stack_canary(&self, run: impl FnOnce()) {
         // force canary to be allocated to stack instead of register
         let mut canary: u64 = black_box(0);
@@ -216,15 +254,16 @@ impl FaultInjectionPrevention {
         unsafe {
             // generate a new global canary at runtime using CryptoRng reference
             // stored in fip struct
+            REF_CANARY.push(0);
 
             // use critical_write in future
-            canary = reference_canary;
+            canary = REF_CANARY.peek();
         }
 
         helper::dsb();
         run();
         self.critical_if(
-            || unsafe { canary == reference_canary },
+            || unsafe { canary == REF_CANARY.pop() },
             || (),
             || Self::secure_reset_device(),
         );
