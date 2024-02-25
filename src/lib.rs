@@ -12,12 +12,15 @@ use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
+/// Global stack that pushes new stack canaries onto non-stack memory
 struct RefCanaryStack {
     reference_canary_vec: [u64; 50],
     counter: usize,
 }
 
 impl RefCanaryStack {
+    /// Creates a new canary stack.
+    /// # Safety: Must allocate in non-stack memory
     const fn new() -> Self {
         RefCanaryStack {
             reference_canary_vec: [0u64; 50],
@@ -25,6 +28,7 @@ impl RefCanaryStack {
         }
     }
 
+    /// Pushes a new stack canary reference on the stack.
     #[inline(always)]
     fn push(&mut self, new_canary: u64) {
         if self.counter >= self.reference_canary_vec.len() - 1 {
@@ -35,6 +39,9 @@ impl RefCanaryStack {
         self.reference_canary_vec[self.counter] = new_canary;
     }
 
+    /// Removes the newest stack canary reference off of the stack.
+    /// # Safety: Must be called at the end of a critical function to compare
+    /// the actaul stack canary value with the reference canary value
     #[inline(always)]
     fn pop(&mut self) -> u64 {
         let popped_value = self.reference_canary_vec[self.counter];
@@ -43,6 +50,7 @@ impl RefCanaryStack {
         popped_value
     }
 
+    /// Returns the newest stack canary reference on the stack
     #[inline(always)]
     fn peek(&self) -> u64 {
         self.reference_canary_vec[self.counter]
