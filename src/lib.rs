@@ -85,7 +85,6 @@ where
     pub fn new(rng: R) -> Self {
         FaultInjectionPrevention { rng }
     }
-}
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
     /// AAPCS calling convention that never returns. Inlined to ensure that an attacker needs to skip
