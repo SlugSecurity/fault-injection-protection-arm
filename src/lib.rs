@@ -74,7 +74,6 @@ pub struct FaultInjectionPrevention<R>
 where
     R: RngCore + CryptoRng,
 {
-    fill_rand_slice: fn(&mut [u8]),
     rng: R,
 }
 
@@ -82,11 +81,11 @@ impl<R> FaultInjectionPrevention<R>
 where
     R: RngCore + CryptoRng,
 {
-    /// Initializes the state of the fault-injection attack prevention library. Takes a closure for
-    /// for filling a slice with secure random bytes.
-    pub fn new(fill_rand_slice: fn(&mut [u8]), rng: R) -> Self {
-        FaultInjectionPrevention { fill_rand_slice, rng }
+    /// Initializes the state of the fault-injection attack prevention library.
+    pub fn new(rng: R) -> Self {
+        FaultInjectionPrevention { rng }
     }
+}
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
     /// AAPCS calling convention that never returns. Inlined to ensure that an attacker needs to skip
@@ -157,7 +156,7 @@ where
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay_cycles(&mut self, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), RandomError> {
+    pub fn secure_random_delay_ms(&mut self, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), RandomError> {
         let random_ms = generate_secure_random(&mut self.rng, min_ms, max_ms)?;
         delay.delay_ms(random_ms);
         Ok(())
@@ -171,7 +170,7 @@ where
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
     pub fn secure_random_delay(&self) {
-        self.secure_random_delay_cycles(10, 50);
+        self.secure_random_delay_ms(10, 50);
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
