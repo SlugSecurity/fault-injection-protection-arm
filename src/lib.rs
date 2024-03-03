@@ -19,12 +19,10 @@ const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
 
-/// Secure///
-/// # Errors
-/// ///
+/// Secure random delay errors
+///
 /// # Errors
 /// * `InvalidRange` - The provided values are out of an expected range.
-#[derive(Debug)]
 pub enum RandomError {
     InvalidRange,
 }
