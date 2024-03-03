@@ -218,5 +218,6 @@ pub fn critical_if(
 /// Compares two byte arrays in constant time, regardless of the size or
 /// content of the inputs
 pub fn const_time_comp<const T: usize>(a: &[u8; T], b: &[u8; T]) -> SecureBool {
+    // short circuits to false if a and b's lengths do not match
     a.ct_eq(b).into()
 }
