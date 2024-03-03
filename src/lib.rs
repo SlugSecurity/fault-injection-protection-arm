@@ -160,7 +160,7 @@ impl FaultInjectionPrevention {
             write_volatile(&mut cond, SecureBool::Error);
         }
 
-        if black_box(black_box(condition() == SecureBool::False)) {
+        if black_box(black_box(condition()) == SecureBool::False) {
             // SAFETY: cond is non-null and properly aligned since it comes from a
             // Rust variable. In addition SecureBool derives the Copy trait, so a
             // bit-wise copy is performed
@@ -168,7 +168,7 @@ impl FaultInjectionPrevention {
                 write_volatile(&mut cond, SecureBool::False);
             }
         } else {
-            if black_box(black_box(condition() == SecureBool::False)) {
+            if black_box(black_box(condition()) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
@@ -183,8 +183,8 @@ impl FaultInjectionPrevention {
         helper::dsb();
         self.secure_random_delay();
 
-        if black_box(black_box(condition() == SecureBool::False)) {
-            if black_box(condition() == SecureBool::True) {
+        if black_box(black_box(condition()) == SecureBool::False) {
+            if black_box(black_box(condition()) == SecureBool::True) {
                 Self::secure_reset_device();
             }
 
@@ -197,7 +197,7 @@ impl FaultInjectionPrevention {
             #[allow(clippy::unit_arg)]
             black_box(failure());
         } else {
-            if black_box(black_box(condition() == SecureBool::False)) {
+            if black_box(black_box(condition()) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 

@@ -11,15 +11,3 @@ pub(crate) fn dsb() {
 
     compiler_fence(Ordering::SeqCst);
 }
-
-/// ISB(Instruction Synchronization Barrier) with compiler fence.
-#[inline(always)]
-pub(crate) fn isb() {
-    // no re-ordering of reads and writes across this point is allowed
-    compiler_fence(Ordering::SeqCst);
-
-    // SAFETY: "isb" is always safe.
-    unsafe { asm!("isb") }
-
-    compiler_fence(Ordering::SeqCst);
-}
