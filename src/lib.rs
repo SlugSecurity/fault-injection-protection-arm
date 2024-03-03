@@ -11,6 +11,7 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
+use rand_core::CryptoRngCore;
 
 /// Global stack that pushes new stack canaries onto non-stack memory
 struct RefCanaryStack {
@@ -106,15 +107,21 @@ macro_rules! never_exit {
 }
 
 /// State for the fault-injection attack prevention library.
-pub struct FaultInjectionPrevention {
-    fill_rand_slice: fn(&mut [u8]),
+pub struct FaultInjectionPrevention<R>
+where
+    R: CryptoRngCore,
+{
+    rng: R,
 }
 
-impl FaultInjectionPrevention {
+impl<R> FaultInjectionPrevention<R>
+where
+    R: CryptoRngCore,
+{
     /// Initializes the state of the fault-injection attack prevention library. Takes a closure for
     /// for filling a slice with secure random bytes.
-    pub fn new(fill_rand_slice: fn(&mut [u8])) -> Self {
-        FaultInjectionPrevention { fill_rand_slice }
+    pub fn new(rng: R) -> Self {
+        FaultInjectionPrevention { rng }
     }
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
@@ -255,21 +262,23 @@ impl FaultInjectionPrevention {
     /// ```
 
     #[inline(never)]
-    pub fn stack_canary(&self, run: impl FnOnce()) {
+    pub fn stack_canary(&mut self, run: impl FnOnce()) {
         // force canary to be allocated to stack instead of register
         let mut canary: u64 = black_box(0);
 
+        // SAFETY: Mutating a global variable is safe because we do not have race-conditions
         unsafe {
-            // generate a new global canary at runtime using CryptoRng reference
-            // stored in fip struct
-            REF_CANARY.push(0);
+            // generate a new global canary at runtime using CryptoRngCore
+            REF_CANARY.push(self.rng.next_u64());
 
-            // use critical_write in future
+            // TODO: use critical_write in future
             canary = REF_CANARY.peek();
         }
 
         helper::dsb();
         run();
+
+        // SAFETY: Reading a global variable is safe because we do not have race-conditions
         self.critical_if(
             || unsafe { canary == REF_CANARY.pop() },
             || (),
