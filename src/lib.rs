@@ -11,7 +11,11 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
+
 extern crate const_random;
+extern crate subtle;
+
+use subtle::{Choice, ConstantTimeEq};
 
 // Application Interrupt and Reset Control Register
 const AIRCR_ADDR: u32 = 0xE000ED0C;
@@ -30,6 +34,16 @@ pub enum SecureBool {
     True = CRITICAL_BOOL,
     False = !CRITICAL_BOOL,
     Error = CRITICAL_ERROR,
+}
+
+impl From<Choice> for SecureBool {
+    fn from(choice: Choice) -> SecureBool {
+        if choice.into() {
+            SecureBool::True
+        } else {
+            SecureBool::False
+        }
+    }
 }
 
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
@@ -204,5 +218,5 @@ pub fn critical_if(
 /// Compares two byte arrays in constant time, regardless of the size or
 /// content of the inputs
 pub fn const_time_comp<const T: usize>(a: &[u8; T], b: &[u8; T]) -> SecureBool {
-    todo!()
+    a.ct_eq(b).into()
 }
