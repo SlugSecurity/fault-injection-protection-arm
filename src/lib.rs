@@ -19,6 +19,14 @@ const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
 
+/// Secure random delay errors
+/// 
+/// # Errors
+/// * `InvalidRange` - The provided values are out of an expected range.
+enum RandomError {
+    InvalidRange,
+}
+
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
 /// allow breakpoints to be set.
 #[inline(never)]
@@ -125,7 +133,7 @@ impl FaultInjectionPrevention {
         R: RngCore + CryptoRng,
     {
         if min > max {
-            return Err("Invalid range: min is greater than max");
+            return Err(RandomError::InvalidRange);
         }
         let range = max - min + 1; 
         let random_value = rng.next_u32() % range + min; 
