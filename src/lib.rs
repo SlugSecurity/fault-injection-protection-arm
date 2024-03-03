@@ -11,7 +11,7 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
-use core::result;
+use core::result::Result;
 use cortex_m::delay::Delay;
 use rand_core::CryptoRngCore;
 
@@ -197,7 +197,8 @@ impl FaultInjectionPrevention {
         // TODO: Use enum with constant large values for true, false, and error. Default to error.
         // When checking for error case, check for not true and not false in case initializing with
         // error value was skipped. Warning below is for tracking this TODO.
-        let x = 5;
+        // PLS FIX
+        // let x = 5;
         let mut cond = false;
 
         // Default to false, use volatile to ensure the write actually occurs.
@@ -255,5 +256,11 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
+    }
+}
+
+impl Default for FaultInjectionPrevention {
+    fn default() -> Self {
+        Self::new()
     }
 }
