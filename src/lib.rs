@@ -13,17 +13,19 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result;
 use cortex_m::delay::Delay;
-use rand_core::{RngCore, CryptoRng};
+use rand_core::CryptoRngCore;
 
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
 
-/// Secure random delay errors
-/// 
+/// Secure///
+/// # Errors
+/// ///
 /// # Errors
 /// * `InvalidRange` - The provided values are out of an expected range.
-enum RandomError {
+#[derive(Debug)]
+pub enum RandomError {
     InvalidRange,
 }
 
@@ -70,15 +72,12 @@ macro_rules! never_exit {
 }
 
 /// State for the fault-injection attack prevention library.
-pub struct FaultInjectionPrevention {
-    fill_rand_slice: fn(&mut [u8]),
-}
+pub struct FaultInjectionPrevention {}
 
 impl FaultInjectionPrevention {
-    /// Initializes the state of the fault-injection attack prevention library. Takes a closure for
-    /// for filling a slice with secure random bytes.
-    pub fn new(fill_rand_slice: fn(&mut [u8])) -> Self {
-        FaultInjectionPrevention { fill_rand_slice }
+    /// Initializes the state of the fault-injection attack prevention library.
+    pub fn new() -> Self {
+        FaultInjectionPrevention {}
     }
 
     /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
@@ -128,22 +127,23 @@ impl FaultInjectionPrevention {
     ///
     /// # Returns
     /// A `Result` containing the random number or an error message.
-    fn generate_secure_random<R>(rng: &mut R, min: u32, max: u32) -> Result<u32, &'static str>
-    where
-        R: RngCore + CryptoRng,
-    {
+    fn generate_secure_random(
+        rng: &mut impl CryptoRngCore,
+        min: u32,
+        max: u32,
+    ) -> Result<u32, RandomError> {
         if min > max {
             return Err(RandomError::InvalidRange);
         }
-        let range = max - min + 1; 
-        let random_value = rng.next_u32() % range + min; 
+        let range = max - min + 1;
+        let random_value = rng.next_u32() % range + min;
         Ok(random_value)
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible ms
     /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
-    /// 
+    ///
     /// # Arguments
     /// * `rng` - Cryptographically secure rng
     /// * `min_ms` - The minimum number of ms to delay.
@@ -153,15 +153,18 @@ impl FaultInjectionPrevention {
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay_cycles<R>(&self, rng: &mut R, min_ms: u32, max_ms: u32, delay: &mut Delay) -> Result<(), &'static str>
-    where
-        R: RngCore + CryptoRng,
-    {
-        match generate_secure_random(rng, min_ms, max_ms) {
+    pub fn secure_random_delay_ms(
+        &self,
+        rng: &mut impl CryptoRngCore,
+        min_ms: u32,
+        max_ms: u32,
+        delay: &mut Delay,
+    ) -> Result<(), RandomError> {
+        match Self::generate_secure_random(rng, min_ms, max_ms) {
             Ok(random_ms) => {
                 delay.delay_ms(random_ms);
                 Ok(())
-            },
+            }
             Err(e) => Err(e),
         }
     }
@@ -169,12 +172,16 @@ impl FaultInjectionPrevention {
     /// A side-channel analysis resistant random delay function. Delays for 10-50 ms. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
-    /// 
+    ///
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay(&self) {
-        self.secure_random_delay_cycles(10, 50);
+    pub fn secure_random_delay(
+        &self,
+        rng: &mut impl CryptoRngCore,
+        delay: &mut Delay,
+    ) -> Result<(), RandomError> {
+        self.secure_random_delay_ms(rng, 10, 50, delay)
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
@@ -216,7 +223,8 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
-        self.secure_random_delay();
+        // PLS FIX
+        //self.secure_random_delay();
 
         if black_box(!black_box(condition())) {
             if black_box(condition()) {
