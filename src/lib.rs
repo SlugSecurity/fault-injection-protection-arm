@@ -25,6 +25,7 @@ const AIRCR_SYSRESETREQ: u32 = 1 << 2;
 /// * `InvalidRange` - The provided values are out of an expected range.
 #[derive(Debug)]
 pub enum RandomError {
+    /// The provided range is invalid. This can occur if the minimum value is greater than the maximum value.
     InvalidRange,
 }
 
