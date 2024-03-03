@@ -74,12 +74,6 @@ macro_rules! never_exit {
     };
 }
 
-/// Initializes the state of the fault-injection attack prevention library. Takes a closure for
-/// for filling a slice with secure random bytes.
-pub fn new(fill_rand_slice: fn(&mut [u8])) -> Self {
-    FaultInjectionPrevention { fill_rand_slice }
-}
-
 /// Ensures that if a function call is skipped, it never exits. Takes a function pointer with the
 /// AAPCS calling convention that never returns. Inlined to ensure that an attacker needs to skip
 /// more than one instruction to exit the code. For maximum security, use [`never_exit`]!() if you
