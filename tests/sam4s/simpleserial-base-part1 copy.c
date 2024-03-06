@@ -43,7 +43,7 @@ uint8_t get_pt(uint8_t* pt, uint8_t len)
 	trigger_low();
 	/* End user-specific code here. *
 	********************************/
-	//simpleserial_put('r', 16, pt);
+	simpleserial_put('r', 16, pt);
 	return 0x00;
 }
 
