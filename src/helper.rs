@@ -1,7 +1,7 @@
 use core::arch::asm;
 use core::sync::atomic::{compiler_fence, Ordering};
 
-/// DSB with compiler fence.
+/// DSB(Data Synchronization Barrier) with compiler fence.
 // https://github.com/rust-embedded/cortex-m/issues/308
 #[inline(always)]
 pub(crate) fn dsb() {
