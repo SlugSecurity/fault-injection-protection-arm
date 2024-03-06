@@ -339,23 +339,12 @@ impl FaultInjectionPrevention {
         black_box(data1)
     }
 
-    /// To be used for a critical memory write that should be resistant to
-    /// fault-injection attacks. The write operation closure argument should be
-    /// a call to the write operation that needs to be redundent.
+    /// To be used for critical memory writes that need to be resilient to
+    /// fault-injection attacks. The `write_op` closure must use a volatile
+    /// write function.
     ///
     /// If a fault injection is detected, the board securely resets itself.
-
     ///
-    /// # Safety
-    ///
-    /// Callers must ensure that the following condition is met:
-    /// * The 'write_op' clousure must use a volatile write function.
-    /// * src is valid for reads
-    /// * src is properly initialized
-    /// * src is pointing to a properly aligned value of type T
-    /// * dst must be valid for writes
-    /// * dst must be properly aligned
-
     /// ```
     /// let fip = FaultInjectionPrevention::new(|_| {});
     ///
@@ -375,7 +364,7 @@ impl FaultInjectionPrevention {
     /// ```
 
     #[inline(always)]
-    pub unsafe fn critical_write<T>(&self, dst: &mut T, src: T, mut write_op: impl FnMut(&mut T, T))
+    pub fn critical_write<T>(&self, dst: &mut T, src: T, mut write_op: impl FnMut(&mut T, T))
     where
         T: Eq + Copy + Default,
     {
