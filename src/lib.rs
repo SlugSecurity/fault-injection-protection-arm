@@ -211,7 +211,7 @@ impl FaultInjectionPrevention {
         failure: impl FnOnce(),
     ) {
         let mut cond = SecureBool::Error;
-      
+
         // Default to error, use volatile to ensure the write actually occurs.
         // SAFETY: cond is non-null and properly aligned since it comes from a
         // Rust variable. In addition SecureBool derives the Copy trait, so a
