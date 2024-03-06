@@ -32,6 +32,15 @@ pub enum SecureBool {
     Error = CRITICAL_ERROR,
 }
 
+impl From<bool> for SecureBool {
+    fn from(cond: bool) -> SecureBool {
+        match cond {
+            true => SecureBool::True,
+            false => SecureBool::False,
+        }
+    }
+}
+
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
 /// allow breakpoints to be set.
 #[inline(never)]
@@ -260,7 +269,11 @@ impl FaultInjectionPrevention {
             write_volatile(black_box(&mut data2), read_volatile(black_box(src)));
         }
 
-        self.critical_if(|| data1 == data2, || (), || Self::secure_reset_device());
+        self.critical_if(
+            || (data1 == data2).into(),
+            || (),
+            || Self::secure_reset_device(),
+        );
 
         black_box(data1)
     }
@@ -312,21 +325,21 @@ impl FaultInjectionPrevention {
 
         write_op(black_box(dst), black_box(src));
         self.critical_if(
-            || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
+            || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
             || (),
             || Self::secure_reset_device(),
         );
 
         write_op(black_box(dst), black_box(src));
         self.critical_if(
-            || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
+            || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
             || (),
             || Self::secure_reset_device(),
         );
 
         write_op(black_box(dst), black_box(src));
         self.critical_if(
-            || unsafe { read_volatile(black_box(dst)) == read_volatile(black_box(&src)) },
+            || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
             || (),
             || Self::secure_reset_device(),
         );
