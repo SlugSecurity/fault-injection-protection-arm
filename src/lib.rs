@@ -11,10 +11,26 @@ use core::arch::asm;
 use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
+extern crate const_random;
 
+// Application Interrupt and Reset Control Register
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
 const AIRCR_SYSRESETREQ: u32 = 1 << 2;
+
+const CRITICAL_BOOL: usize = const_random::const_random!(usize);
+const CRITICAL_ERROR: usize = const_random::const_random!(usize);
+
+#[allow(missing_docs)]
+#[derive(PartialEq, Eq, Clone, Copy)]
+#[repr(usize)]
+/// Large constants values for true and false. This makes it so attackers need
+/// to do more than flip a signle bit for a true/false flip.
+pub enum SecureBool {
+    True = CRITICAL_BOOL,
+    False = !CRITICAL_BOOL,
+    Error = CRITICAL_ERROR,
+}
 
 /// A panic handler that never exits, even in cases of fault-injection attacks. Never inlined to
 /// allow breakpoints to be set.
@@ -130,48 +146,50 @@ impl FaultInjectionPrevention {
     /// maximum protection.
     pub fn critical_if(
         &self,
-        mut condition: impl FnMut() -> bool,
+        mut condition: impl FnMut() -> SecureBool,
         success: impl FnOnce(),
         failure: impl FnOnce(),
     ) {
-        // TODO: Use enum with constant large values for true, false, and error. Default to error.
-        // When checking for error case, check for not true and not false in case initializing with
-        // error value was skipped. Warning below is for tracking this TODO.
-        let x = 5;
-        let mut cond = false;
+        let mut cond = SecureBool::Error;
 
-        // Default to false, use volatile to ensure the write actually occurs.
-        // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
+        // Default to error, use volatile to ensure the write actually occurs.
+        // SAFETY: cond is non-null and properly aligned since it comes from a
+        // Rust variable. In addition SecureBool derives the Copy trait, so a
+        // bit-wise copy is performed
         unsafe {
-            write_volatile(&mut cond as *mut bool, false);
+            write_volatile(&mut cond, SecureBool::Error);
         }
 
-        if black_box(!black_box(condition())) {
-            // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
+        if black_box(black_box(condition()) == SecureBool::False) {
+            // SAFETY: cond is non-null and properly aligned since it comes from a
+            // Rust variable. In addition SecureBool derives the Copy trait, so a
+            // bit-wise copy is performed
             unsafe {
-                write_volatile(&mut cond as *mut bool, false);
+                write_volatile(&mut cond, SecureBool::False);
             }
         } else {
-            if black_box(!black_box(condition())) {
+            if black_box(black_box(condition()) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
-            // SAFETY: cond is non-null and properly aligned since it comes from a Rust variable.
+            // SAFETY: cond is non-null and properly aligned since it comes from a
+            // Rust variable. In addition SecureBool derives the Copy trait, so a
+            // bit-wise copy is performed
             unsafe {
-                write_volatile(&mut cond as *mut bool, true);
+                write_volatile(&mut cond, SecureBool::True);
             }
         }
 
         helper::dsb();
         self.secure_random_delay();
 
-        if black_box(!black_box(condition())) {
-            if black_box(condition()) {
+        if black_box(black_box(condition()) == SecureBool::False) {
+            if black_box(black_box(condition()) == SecureBool::True) {
                 Self::secure_reset_device();
             }
 
             // SAFETY: cond is non-null, properly aligned, and initialized since it comes from a Rust variable.
-            if unsafe { read_volatile(&cond as *const bool) } {
+            if unsafe { read_volatile(&cond) != SecureBool::False } {
                 Self::secure_reset_device();
             }
 
@@ -179,12 +197,12 @@ impl FaultInjectionPrevention {
             #[allow(clippy::unit_arg)]
             black_box(failure());
         } else {
-            if black_box(!black_box(condition())) {
+            if black_box(black_box(condition()) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
             // SAFETY: cond is non-null, properly aligned, and initialized since it comes from a Rust variable.
-            if unsafe { !read_volatile(&cond as *const bool) } {
+            if unsafe { read_volatile(&cond) != SecureBool::True } {
                 Self::secure_reset_device();
             }
 
