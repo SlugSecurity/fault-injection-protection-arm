@@ -169,6 +169,8 @@ impl FaultInjectionPrevention {
     /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
     ///
+    /// Returns an error if invalid range, i.e. `min_ms` is greater than `max_ms`.
+    ///
     /// # Arguments
     /// * `rng` - Cryptographically secure rng
     /// * `min_ms` - The minimum number of ms to delay.
@@ -201,12 +203,8 @@ impl FaultInjectionPrevention {
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        delay: &mut Delay,
-    ) -> Result<(), RandomError> {
-        self.secure_random_delay_ms(rng, 10, 50, delay)
+    pub fn secure_random_delay(&self, rng: &mut impl CryptoRngCore, delay: &mut Delay) {
+        self.secure_random_delay_ms(rng, 10, 50, delay).unwrap();
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
@@ -253,9 +251,7 @@ impl FaultInjectionPrevention {
 
         helper::dsb();
 
-        if self.secure_random_delay(rng, delay).is_err() {
-            Self::secure_reset_device();
-        }
+        self.secure_random_delay(rng, delay);
 
         if black_box(black_box(condition()) == SecureBool::False) {
             if black_box(black_box(condition()) == SecureBool::True) {
