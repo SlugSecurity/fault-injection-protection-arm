@@ -35,6 +35,15 @@ pub enum SecureBool {
     Error = CRITICAL_ERROR,
 }
 
+impl From<bool> for SecureBool {
+    fn from(cond: bool) -> SecureBool {
+        match cond {
+            true => SecureBool::True,
+            false => SecureBool::False,
+        }
+    }
+}
+
 /// Secure random delay errors
 ///
 /// # Errors
@@ -160,6 +169,8 @@ impl FaultInjectionPrevention {
     /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
     ///
+    /// Returns an error if invalid range, i.e. `min_ms` is greater than `max_ms`.
+    ///
     /// # Arguments
     /// * `rng` - Cryptographically secure rng
     /// * `min_ms` - The minimum number of ms to delay.
@@ -192,12 +203,8 @@ impl FaultInjectionPrevention {
     /// # Safety
     /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        delay: &mut Delay,
-    ) -> Result<(), RandomError> {
-        self.secure_random_delay_ms(rng, 10, 50, delay)
+    pub fn secure_random_delay(&self, rng: &mut impl CryptoRngCore, delay: &mut Delay) {
+        self.secure_random_delay_ms(rng, 10, 50, delay).unwrap();
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
@@ -209,6 +216,8 @@ impl FaultInjectionPrevention {
         mut condition: impl FnMut() -> SecureBool,
         success: impl FnOnce(),
         failure: impl FnOnce(),
+        rng: &mut impl CryptoRngCore,
+        delay: &mut Delay,
     ) {
         let mut cond = SecureBool::Error;
 
@@ -241,8 +250,8 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
-        // PLS FIX
-        //self.secure_random_delay();
+
+        self.secure_random_delay(rng, delay);
 
         if black_box(black_box(condition()) == SecureBool::False) {
             if black_box(black_box(condition()) == SecureBool::True) {
@@ -273,6 +282,131 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
+    }
+
+    /// To be used for a critical memory reads that should be resistant to
+    /// fault-injection attacks. If a fault injection is detected, the board
+    /// securely resets itself.
+
+    #[inline(always)]
+    pub fn critical_read<T>(&self, src: &T, rng: &mut impl CryptoRngCore, delay: &mut Delay) -> T
+    where
+        T: Eq + Copy + Default,
+    {
+        let mut data1: T = black_box(T::default());
+        let mut data2: T = black_box(T::default());
+
+        // All volatile memory reads/writes and ordering-sensitive operations
+        // should use ARM dsb fence to guarantee no re-ordering in case volatile
+        // is reordered due to detected no side effects
+        helper::dsb();
+
+        // SAFETY:
+        // * src is valid for reads because it is a rust reference
+        //
+        // * src is properly initialized
+        //
+        // * src is pointing to a properly aligned value of type T because it is
+        // a rust refernce
+        //
+        // * dst is be valid for writes because type T must implement the
+        // default trait.
+        //
+        // * dst is properly aligned
+
+        unsafe {
+            write_volatile(black_box(&mut data1), read_volatile(black_box(src)));
+        }
+
+        unsafe {
+            write_volatile(black_box(&mut data2), read_volatile(black_box(src)));
+        }
+
+        unsafe {
+            write_volatile(black_box(&mut data1), read_volatile(black_box(src)));
+        }
+
+        unsafe {
+            write_volatile(black_box(&mut data2), read_volatile(black_box(src)));
+        }
+
+        self.critical_if(
+            || (data1 == data2).into(),
+            || (),
+            || Self::secure_reset_device(),
+            rng,
+            delay,
+        );
+
+        black_box(data1)
+    }
+
+    /// To be used for critical memory writes that need to be resilient to
+    /// fault-injection attacks. The `write_op` closure must use a volatile
+    /// write function.
+    ///
+    /// If a fault injection is detected, the board securely resets itself.
+    ///
+    /// ```
+    /// let fip = FaultInjectionPrevention::new(|_| {});
+    ///
+    /// let mut buffer: [u8; 20] = [0; 20];
+    /// let data: [u8; 20] = [b'A'; 20];
+    ///
+    /// unsafe {
+    ///    fip.critical_write(&mut buffer, data, |dst, src| write_volatile(dst, src));
+    /// }
+    ///
+    /// // 'from_ref' is available in rust version 1.76.0
+    /// unsafe {
+    ///    fip.critical_write(&mut buffer, data, |dst, src| {
+    ///         flash_controller.write(from_ref(dst) as u32, &src, &SystemClock)
+    ///    });
+    /// }
+    /// ```
+
+    #[inline(always)]
+    pub fn critical_write<T>(
+        &self,
+        dst: &mut T,
+        src: T,
+        mut write_op: impl FnMut(&mut T, T),
+        rng: &mut impl CryptoRngCore,
+        delay: &mut Delay,
+    ) where
+        T: Eq + Copy + Default,
+    {
+        // All volatile memory reads/writes and ordering-sensitive operations
+        // should use ARM dsb fence to guarantee no re-ordering in case volatile
+        // is reordered due to detected no side effects
+        helper::dsb();
+
+        write_op(black_box(dst), black_box(src));
+        self.critical_if(
+            || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
+            || (),
+            || Self::secure_reset_device(),
+            rng,
+            delay,
+        );
+
+        write_op(black_box(dst), black_box(src));
+        self.critical_if(
+            || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
+            || (),
+            || Self::secure_reset_device(),
+            rng,
+            delay,
+        );
+
+        write_op(black_box(dst), black_box(src));
+        self.critical_if(
+            || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
+            || (),
+            || Self::secure_reset_device(),
+            rng,
+            delay,
+        );
     }
 }
 
