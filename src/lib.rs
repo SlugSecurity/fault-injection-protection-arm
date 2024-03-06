@@ -218,6 +218,8 @@ impl FaultInjectionPrevention {
         mut condition: impl FnMut() -> SecureBool,
         success: impl FnOnce(),
         failure: impl FnOnce(),
+        rng: &mut impl CryptoRngCore,
+        delay: &mut Delay,
     ) {
         let mut cond = SecureBool::Error;
 
@@ -250,8 +252,10 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
-        // PLS FIX
-        //self.secure_random_delay();
+
+        if self.secure_random_delay(rng, delay).is_err() {
+            Self::secure_reset_device();
+        }
 
         if black_box(black_box(condition()) == SecureBool::False) {
             if black_box(black_box(condition()) == SecureBool::True) {
@@ -289,7 +293,7 @@ impl FaultInjectionPrevention {
     /// securely resets itself.
 
     #[inline(always)]
-    pub fn critical_read<T>(&self, src: &T) -> T
+    pub fn critical_read<T>(&self, src: &T, rng: &mut impl CryptoRngCore, delay: &mut Delay) -> T
     where
         T: Eq + Copy + Default,
     {
@@ -334,6 +338,8 @@ impl FaultInjectionPrevention {
             || (data1 == data2).into(),
             || (),
             || Self::secure_reset_device(),
+            rng,
+            delay,
         );
 
         black_box(data1)
@@ -364,8 +370,14 @@ impl FaultInjectionPrevention {
     /// ```
 
     #[inline(always)]
-    pub fn critical_write<T>(&self, dst: &mut T, src: T, mut write_op: impl FnMut(&mut T, T))
-    where
+    pub fn critical_write<T>(
+        &self,
+        dst: &mut T,
+        src: T,
+        mut write_op: impl FnMut(&mut T, T),
+        rng: &mut impl CryptoRngCore,
+        delay: &mut Delay,
+    ) where
         T: Eq + Copy + Default,
     {
         // All volatile memory reads/writes and ordering-sensitive operations
@@ -378,6 +390,8 @@ impl FaultInjectionPrevention {
             || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
             || (),
             || Self::secure_reset_device(),
+            rng,
+            delay,
         );
 
         write_op(black_box(dst), black_box(src));
@@ -385,6 +399,8 @@ impl FaultInjectionPrevention {
             || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
             || (),
             || Self::secure_reset_device(),
+            rng,
+            delay,
         );
 
         write_op(black_box(dst), black_box(src));
@@ -392,6 +408,8 @@ impl FaultInjectionPrevention {
             || unsafe { (read_volatile(black_box(dst)) == read_volatile(black_box(&src))).into() },
             || (),
             || Self::secure_reset_device(),
+            rng,
+            delay,
         );
     }
 }
