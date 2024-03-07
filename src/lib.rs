@@ -246,7 +246,7 @@ impl FaultInjectionPrevention {
 
         helper::dsb();
 
-        self.secure_random_delay(rng, delay);
+        self.secure_random_delay(rng);
 
         if black_box(black_box(condition()) == SecureBool::False) {
             if black_box(black_box(condition()) == SecureBool::True) {
