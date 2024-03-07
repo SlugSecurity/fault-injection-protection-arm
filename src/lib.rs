@@ -212,7 +212,6 @@ impl FaultInjectionPrevention {
         success: impl FnOnce(),
         failure: impl FnOnce(),
         rng: &mut impl CryptoRngCore,
-        delay: &mut Delay,
     ) {
         let mut cond = SecureBool::Error;
 
