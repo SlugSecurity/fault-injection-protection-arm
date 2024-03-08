@@ -176,9 +176,6 @@ impl FaultInjectionPrevention {
     /// * `min_cycles` - The minimum number of cycles to delay.
     /// * `max_cycles` - The maximum number of cycles to delay.
     /// * `delay` - Delay instance
-    ///
-    /// # Safety
-    /// This function assumes that `cortex-m::asm::delay` is safe.
     #[inline(always)]
     pub fn secure_random_delay_cycles(
         &self,
@@ -194,9 +191,6 @@ impl FaultInjectionPrevention {
     /// A side-channel analysis resistant random delay function. Delays for 10-50 cycles. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
-    ///
-    /// # Safety
-    /// This function assumes that `cortex-m::asm::delay` is safe.
     #[inline(always)]
     pub fn secure_random_delay(&self, rng: &mut impl CryptoRngCore) {
         self.secure_random_delay_cycles(rng, 10, 50).unwrap();
