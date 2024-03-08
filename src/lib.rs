@@ -12,7 +12,7 @@ use core::hint::black_box;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
-use cortex_m::delay::Delay;
+use cortex_m::asm::delay;
 use rand_core::CryptoRngCore;
 extern crate const_random;
 
@@ -152,7 +152,7 @@ impl FaultInjectionPrevention {
     ///
     /// # Returns
     /// A `Result` containing the random number or an error message.
-    fn generate_secure_random(
+    pub fn generate_secure_random(
         rng: &mut impl CryptoRngCore,
         min: u32,
         max: u32,
@@ -165,7 +165,7 @@ impl FaultInjectionPrevention {
         Ok(random_value)
     }
 
-    /// A side-channel analysis resistant random delay function. Takes a range of possible ms
+    /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
     /// to delay for. Use [`FaultInjectionPrevention::secure_random_delay()`] instead if you don't need to specify the
     /// range. Inlined to eliminate branch to this function.
     ///
@@ -173,38 +173,27 @@ impl FaultInjectionPrevention {
     ///
     /// # Arguments
     /// * `rng` - Cryptographically secure rng
-    /// * `min_ms` - The minimum number of ms to delay.
-    /// * `max_ms` - The maximum number of ms to delay.
+    /// * `min_cycles` - The minimum number of cycles to delay.
+    /// * `max_cycles` - The maximum number of cycles to delay.
     /// * `delay` - Delay instance
-    ///
-    /// # Safety
-    /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay_ms(
+    pub fn secure_random_delay_cycles(
         &self,
         rng: &mut impl CryptoRngCore,
-        min_ms: u32,
-        max_ms: u32,
-        delay: &mut Delay,
+        min_cycles: u32,
+        max_cycles: u32,
     ) -> Result<(), RandomError> {
-        match Self::generate_secure_random(rng, min_ms, max_ms) {
-            Ok(random_ms) => {
-                delay.delay_ms(random_ms);
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
+        let random_cycles = Self::generate_secure_random(rng, min_cycles, max_cycles)?;
+        delay(random_cycles);
+        Ok(())
     }
 
-    /// A side-channel analysis resistant random delay function. Delays for 10-50 ms. Use after
+    /// A side-channel analysis resistant random delay function. Delays for 10-50 cycles. Use after
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
-    ///
-    /// # Safety
-    /// This function assumes that `cortex-m::delay::Delay` is safe.
     #[inline(always)]
-    pub fn secure_random_delay(&self, rng: &mut impl CryptoRngCore, delay: &mut Delay) {
-        self.secure_random_delay_ms(rng, 10, 50, delay).unwrap();
+    pub fn secure_random_delay(&self, rng: &mut impl CryptoRngCore) {
+        self.secure_random_delay_cycles(rng, 10, 50).unwrap();
     }
 
     /// To be used for a critical if statement that should be resistant to fault-injection attacks.
@@ -217,7 +206,6 @@ impl FaultInjectionPrevention {
         success: impl FnOnce(),
         failure: impl FnOnce(),
         rng: &mut impl CryptoRngCore,
-        delay: &mut Delay,
     ) {
         let mut cond = SecureBool::Error;
 
@@ -251,7 +239,7 @@ impl FaultInjectionPrevention {
 
         helper::dsb();
 
-        self.secure_random_delay(rng, delay);
+        self.secure_random_delay(rng);
 
         if black_box(black_box(condition()) == SecureBool::False) {
             if black_box(black_box(condition()) == SecureBool::True) {
@@ -289,7 +277,7 @@ impl FaultInjectionPrevention {
     /// securely resets itself.
 
     #[inline(always)]
-    pub fn critical_read<T>(&self, src: &T, rng: &mut impl CryptoRngCore, delay: &mut Delay) -> T
+    pub fn critical_read<T>(&self, src: &T, rng: &mut impl CryptoRngCore) -> T
     where
         T: Eq + Copy + Default,
     {
@@ -335,7 +323,6 @@ impl FaultInjectionPrevention {
             || (),
             || Self::secure_reset_device(),
             rng,
-            delay,
         );
 
         black_box(data1)
@@ -372,7 +359,6 @@ impl FaultInjectionPrevention {
         src: T,
         mut write_op: impl FnMut(&mut T, T),
         rng: &mut impl CryptoRngCore,
-        delay: &mut Delay,
     ) where
         T: Eq + Copy + Default,
     {
@@ -387,7 +373,6 @@ impl FaultInjectionPrevention {
             || (),
             || Self::secure_reset_device(),
             rng,
-            delay,
         );
 
         write_op(black_box(dst), black_box(src));
@@ -396,7 +381,6 @@ impl FaultInjectionPrevention {
             || (),
             || Self::secure_reset_device(),
             rng,
-            delay,
         );
 
         write_op(black_box(dst), black_box(src));
@@ -405,7 +389,6 @@ impl FaultInjectionPrevention {
             || (),
             || Self::secure_reset_device(),
             rng,
-            delay,
         );
     }
 }
