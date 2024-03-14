@@ -13,7 +13,7 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
 use cortex_m::asm::delay;
-use rand_core::CryptoRngCore;
+use rand_core::{impls, CryptoRngCore};
 use sealed::sealed;
 
 extern crate const_random;
@@ -46,8 +46,7 @@ impl From<bool> for SecureBool {
     }
 }
 
-pub struct RngUsed {}
-pub struct RngUnused {}
+struct RngNotUsed {}
 
 #[sealed]
 trait RngFnOnce<T> {
@@ -60,9 +59,10 @@ trait RngFnMut<T> {
 }
 
 #[sealed]
-impl<F> RngFnOnce<RngUsed> for F
+impl<F, T> RngFnOnce<T> for F
 where
     F: FnOnce(&mut dyn CryptoRngCore),
+    T: CryptoRngCore,
 {
     fn exec(self, rng: &mut impl CryptoRngCore) -> () {
         (self)(rng)
@@ -70,7 +70,7 @@ where
 }
 
 #[sealed]
-impl<F> RngFnOnce<RngUnused> for F
+impl<F> RngFnOnce<RngNotUsed> for F
 where
     F: FnOnce(),
 {
@@ -80,9 +80,10 @@ where
 }
 
 #[sealed]
-impl<F> RngFnMut<RngUsed> for F
+impl<F, T> RngFnMut<T> for F
 where
     F: FnMut(&mut dyn CryptoRngCore) -> SecureBool,
+    T: CryptoRngCore,
 {
     fn exec(&mut self, rng: &mut impl CryptoRngCore) -> SecureBool {
         (self)(rng)
@@ -90,7 +91,7 @@ where
 }
 
 #[sealed]
-impl<F> RngFnMut<RngUnused> for F
+impl<F> RngFnMut<RngNotUsed> for F
 where
     F: FnMut() -> SecureBool,
 {
