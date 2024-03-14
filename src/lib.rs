@@ -13,7 +13,6 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
 use cortex_m::asm::delay;
-use max78000_hal::peripherals::rand_chacha::ChaCha20Core;
 use rand_core::{CryptoRng, RngCore};
 use sealed::sealed;
 
@@ -379,7 +378,7 @@ impl FaultInjectionPrevention {
 
         self.critical_if(
             || (data1 == data2).into(),
-            |rng: &mut ChaCha20Core| (),
+            || (),
             || Self::secure_reset_device(),
             rng,
         );
