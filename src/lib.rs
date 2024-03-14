@@ -220,9 +220,8 @@ impl FaultInjectionPrevention {
             return Err(RandomError::InvalidRange);
         }
         let range = max - min + 1;
-        // let random_value = rng.next_u32() % range + min;
-        // Ok(random_value)
-        Ok(0u32)
+        let random_value = rng.next_u32() % range + min;
+        Ok(random_value)
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
@@ -380,7 +379,7 @@ impl FaultInjectionPrevention {
 
         self.critical_if(
             || (data1 == data2).into(),
-            || (),
+            |rng: &mut ChaCha20Core| (),
             || Self::secure_reset_device(),
             rng,
         );
