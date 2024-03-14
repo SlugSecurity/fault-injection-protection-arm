@@ -46,7 +46,7 @@ impl From<bool> for SecureBool {
     }
 }
 
-struct RngNotUsed {}
+pub struct RngNotUsed {}
 
 #[sealed]
 trait RngFnOnce<T, U: RngCore + CryptoRng> {
