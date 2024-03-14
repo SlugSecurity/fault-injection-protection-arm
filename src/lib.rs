@@ -46,6 +46,7 @@ impl From<bool> for SecureBool {
     }
 }
 
+/// A phantom data type that is used by Rng closure traits
 pub struct RngNotUsed {}
 
 #[sealed]
@@ -258,6 +259,7 @@ impl FaultInjectionPrevention {
     /// Takes a condition closure, a success closure, and a failure closure. The success and failure
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
+    #[allow(private_bounds)]
     pub fn critical_if<FnMutType, FnOnceType, T: RngCore + CryptoRng>(
         &self,
         mut condition: impl RngFnMut<FnMutType, T>,
