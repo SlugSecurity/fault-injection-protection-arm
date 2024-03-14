@@ -14,6 +14,8 @@ use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
 use cortex_m::asm::delay;
 use rand_core::CryptoRngCore;
+use sealed::sealed;
+
 extern crate const_random;
 
 // Application Interrupt and Reset Control Register
@@ -41,6 +43,59 @@ impl From<bool> for SecureBool {
             true => SecureBool::True,
             false => SecureBool::False,
         }
+    }
+}
+
+pub struct RngUsed {}
+pub struct RngUnused {}
+
+#[sealed]
+trait RngFnOnce<T> {
+    fn exec(self, rng: &mut impl CryptoRngCore) -> ();
+}
+
+#[sealed]
+trait RngFnMut<T> {
+    fn exec(&mut self, rng: &mut impl CryptoRngCore) -> SecureBool;
+}
+
+#[sealed]
+impl<F> RngFnOnce<RngUsed> for F
+where
+    F: FnOnce(&mut dyn CryptoRngCore),
+{
+    fn exec(self, rng: &mut impl CryptoRngCore) -> () {
+        (self)(rng)
+    }
+}
+
+#[sealed]
+impl<F> RngFnOnce<RngUnused> for F
+where
+    F: FnOnce(),
+{
+    fn exec(self, _: &mut impl CryptoRngCore) -> () {
+        (self)()
+    }
+}
+
+#[sealed]
+impl<F> RngFnMut<RngUsed> for F
+where
+    F: FnMut(&mut dyn CryptoRngCore) -> SecureBool,
+{
+    fn exec(&mut self, rng: &mut impl CryptoRngCore) -> SecureBool {
+        (self)(rng)
+    }
+}
+
+#[sealed]
+impl<F> RngFnMut<RngUnused> for F
+where
+    F: FnMut() -> SecureBool,
+{
+    fn exec(&mut self, _: &mut impl CryptoRngCore) -> SecureBool {
+        (self)()
     }
 }
 
@@ -200,11 +255,11 @@ impl FaultInjectionPrevention {
     /// Takes a condition closure, a success closure, and a failure closure. The success and failure
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
-    pub fn critical_if(
+    pub fn critical_if<FnMutType, FnOnceType>(
         &self,
-        mut condition: impl FnMut() -> SecureBool,
-        success: impl FnOnce(),
-        failure: impl FnOnce(),
+        mut condition: impl RngFnMut<FnMutType>,
+        success: impl RngFnOnce<FnOnceType>,
+        failure: impl RngFnOnce<FnOnceType>,
         rng: &mut impl CryptoRngCore,
     ) {
         let mut cond = SecureBool::Error;
@@ -217,7 +272,7 @@ impl FaultInjectionPrevention {
             write_volatile(&mut cond, SecureBool::Error);
         }
 
-        if black_box(black_box(condition()) == SecureBool::False) {
+        if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
             // SAFETY: cond is non-null and properly aligned since it comes from a
             // Rust variable. In addition SecureBool derives the Copy trait, so a
             // bit-wise copy is performed
@@ -225,7 +280,7 @@ impl FaultInjectionPrevention {
                 write_volatile(&mut cond, SecureBool::False);
             }
         } else {
-            if black_box(black_box(condition()) == SecureBool::False) {
+            if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
@@ -241,8 +296,8 @@ impl FaultInjectionPrevention {
 
         self.secure_random_delay(rng);
 
-        if black_box(black_box(condition()) == SecureBool::False) {
-            if black_box(black_box(condition()) == SecureBool::True) {
+        if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
+            if black_box(black_box(condition.exec(rng)) == SecureBool::True) {
                 Self::secure_reset_device();
             }
 
@@ -253,9 +308,9 @@ impl FaultInjectionPrevention {
 
             // Not moving the parentheses to the outside makes smaller code.
             #[allow(clippy::unit_arg)]
-            black_box(failure());
+            black_box(failure.exec(rng));
         } else {
-            if black_box(black_box(condition()) == SecureBool::False) {
+            if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
@@ -266,7 +321,7 @@ impl FaultInjectionPrevention {
 
             // Not moving the parentheses to the outside makes smaller code.
             #[allow(clippy::unit_arg)]
-            black_box(success());
+            black_box(success.exec(rng));
         }
 
         helper::dsb();
