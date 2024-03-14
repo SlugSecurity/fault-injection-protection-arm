@@ -260,11 +260,11 @@ impl FaultInjectionPrevention {
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
     #[allow(private_bounds)]
-    pub fn critical_if<FnMutType, FnOnceType, T: RngCore + CryptoRng>(
+    pub fn critical_if<FnMutType, FnOnceType1, FnOnceType2, T: RngCore + CryptoRng>(
         &self,
         mut condition: impl RngFnMut<FnMutType, T>,
-        success: impl RngFnOnce<FnOnceType, T>,
-        failure: impl RngFnOnce<FnOnceType, T>,
+        success: impl RngFnOnce<FnOnceType1, T>,
+        failure: impl RngFnOnce<FnOnceType2, T>,
         rng: &mut T,
     ) {
         let mut cond = SecureBool::Error;
