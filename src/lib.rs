@@ -13,7 +13,7 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
 use cortex_m::asm::delay;
-use rand_core::{impls, CryptoRngCore};
+use rand_core::CryptoRngCore;
 use sealed::sealed;
 
 extern crate const_random;
@@ -48,54 +48,50 @@ impl From<bool> for SecureBool {
 
 struct RngNotUsed {}
 
-#[sealed]
-trait RngFnOnce<T> {
-    fn exec(self, rng: &mut impl CryptoRngCore) -> ();
+trait RngFnOnce<T, U: CryptoRngCore> {
+    fn exec(self, rng: &mut U) -> ();
 }
 
-#[sealed]
-trait RngFnMut<T> {
-    fn exec(&mut self, rng: &mut impl CryptoRngCore) -> SecureBool;
+trait RngFnMut<T, U: CryptoRngCore> {
+    fn exec(&mut self, rng: &mut U) -> SecureBool;
 }
 
-#[sealed]
-impl<F, T> RngFnOnce<T> for F
+impl<F, T> RngFnOnce<T, T> for F
 where
-    F: FnOnce(&mut dyn CryptoRngCore),
+    F: FnOnce(&mut T),
     T: CryptoRngCore,
 {
-    fn exec(self, rng: &mut impl CryptoRngCore) -> () {
+    fn exec(self, rng: &mut T) -> () {
         (self)(rng)
     }
 }
 
-#[sealed]
-impl<F> RngFnOnce<RngNotUsed> for F
+impl<F, T> RngFnOnce<RngNotUsed, T> for F
 where
     F: FnOnce(),
+    T: CryptoRngCore,
 {
-    fn exec(self, _: &mut impl CryptoRngCore) -> () {
+    fn exec(self, _: &mut T) -> () {
         (self)()
     }
 }
 
-#[sealed]
-impl<F, T> RngFnMut<T> for F
+impl<F, T> RngFnMut<T, T> for F
 where
-    F: FnMut(&mut dyn CryptoRngCore) -> SecureBool,
+    F: FnMut(&mut T) -> SecureBool,
     T: CryptoRngCore,
 {
-    fn exec(&mut self, rng: &mut impl CryptoRngCore) -> SecureBool {
+    fn exec(&mut self, rng: &mut T) -> SecureBool {
         (self)(rng)
     }
 }
 
-#[sealed]
-impl<F> RngFnMut<RngNotUsed> for F
+impl<F, T> RngFnMut<RngNotUsed, T> for F
 where
     F: FnMut() -> SecureBool,
+    T: CryptoRngCore,
 {
-    fn exec(&mut self, _: &mut impl CryptoRngCore) -> SecureBool {
+    fn exec(&mut self, _: &mut T) -> SecureBool {
         (self)()
     }
 }
@@ -256,12 +252,12 @@ impl FaultInjectionPrevention {
     /// Takes a condition closure, a success closure, and a failure closure. The success and failure
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
-    pub fn critical_if<FnMutType, FnOnceType>(
+    pub fn critical_if<FnMutType, FnOnceType, T: CryptoRngCore>(
         &self,
-        mut condition: impl RngFnMut<FnMutType>,
-        success: impl RngFnOnce<FnOnceType>,
-        failure: impl RngFnOnce<FnOnceType>,
-        rng: &mut impl CryptoRngCore,
+        mut condition: impl RngFnMut<FnMutType, T>,
+        success: impl RngFnOnce<FnOnceType, T>,
+        failure: impl RngFnOnce<FnOnceType, T>,
+        rng: &mut T,
     ) {
         let mut cond = SecureBool::Error;
 
