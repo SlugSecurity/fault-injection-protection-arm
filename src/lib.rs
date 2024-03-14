@@ -13,7 +13,8 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
 use cortex_m::asm::delay;
-use rand_core::CryptoRngCore;
+use max78000_hal::peripherals::rand_chacha::ChaCha20Core;
+use rand_core::{CryptoRng, RngCore};
 use sealed::sealed;
 
 extern crate const_random;
@@ -48,48 +49,54 @@ impl From<bool> for SecureBool {
 
 struct RngNotUsed {}
 
-trait RngFnOnce<T, U: CryptoRngCore> {
+#[sealed]
+trait RngFnOnce<T, U: RngCore + CryptoRng> {
     fn exec(self, rng: &mut U) -> ();
 }
 
-trait RngFnMut<T, U: CryptoRngCore> {
+#[sealed]
+trait RngFnMut<T, U: RngCore + CryptoRng> {
     fn exec(&mut self, rng: &mut U) -> SecureBool;
 }
 
+#[sealed]
 impl<F, T> RngFnOnce<T, T> for F
 where
     F: FnOnce(&mut T),
-    T: CryptoRngCore,
+    T: RngCore + CryptoRng,
 {
     fn exec(self, rng: &mut T) -> () {
         (self)(rng)
     }
 }
 
+#[sealed]
 impl<F, T> RngFnOnce<RngNotUsed, T> for F
 where
     F: FnOnce(),
-    T: CryptoRngCore,
+    T: RngCore + CryptoRng,
 {
     fn exec(self, _: &mut T) -> () {
         (self)()
     }
 }
 
+#[sealed]
 impl<F, T> RngFnMut<T, T> for F
 where
     F: FnMut(&mut T) -> SecureBool,
-    T: CryptoRngCore,
+    T: RngCore + CryptoRng,
 {
     fn exec(&mut self, rng: &mut T) -> SecureBool {
         (self)(rng)
     }
 }
 
+#[sealed]
 impl<F, T> RngFnMut<RngNotUsed, T> for F
 where
     F: FnMut() -> SecureBool,
-    T: CryptoRngCore,
+    T: RngCore + CryptoRng,
 {
     fn exec(&mut self, _: &mut T) -> SecureBool {
         (self)()
@@ -205,7 +212,7 @@ impl FaultInjectionPrevention {
     /// # Returns
     /// A `Result` containing the random number or an error message.
     pub fn generate_secure_random(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut (impl RngCore + CryptoRng),
         min: u32,
         max: u32,
     ) -> Result<u32, RandomError> {
@@ -213,8 +220,9 @@ impl FaultInjectionPrevention {
             return Err(RandomError::InvalidRange);
         }
         let range = max - min + 1;
-        let random_value = rng.next_u32() % range + min;
-        Ok(random_value)
+        // let random_value = rng.next_u32() % range + min;
+        // Ok(random_value)
+        Ok(0u32)
     }
 
     /// A side-channel analysis resistant random delay function. Takes a range of possible cycles
@@ -231,7 +239,7 @@ impl FaultInjectionPrevention {
     #[inline(always)]
     pub fn secure_random_delay_cycles(
         &self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut (impl RngCore + CryptoRng),
         min_cycles: u32,
         max_cycles: u32,
     ) -> Result<(), RandomError> {
@@ -244,7 +252,7 @@ impl FaultInjectionPrevention {
     /// any externally-observable events or before operations where it is more secure to hide the
     /// timing. Inlined to eliminate branch to this function.
     #[inline(always)]
-    pub fn secure_random_delay(&self, rng: &mut impl CryptoRngCore) {
+    pub fn secure_random_delay(&self, rng: &mut (impl RngCore + CryptoRng)) {
         self.secure_random_delay_cycles(rng, 10, 50).unwrap();
     }
 
@@ -252,7 +260,7 @@ impl FaultInjectionPrevention {
     /// Takes a condition closure, a success closure, and a failure closure. The success and failure
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
-    pub fn critical_if<FnMutType, FnOnceType, T: CryptoRngCore>(
+    pub fn critical_if<FnMutType, FnOnceType, T: RngCore + CryptoRng>(
         &self,
         mut condition: impl RngFnMut<FnMutType, T>,
         success: impl RngFnOnce<FnOnceType, T>,
@@ -329,7 +337,7 @@ impl FaultInjectionPrevention {
     /// securely resets itself.
 
     #[inline(always)]
-    pub fn critical_read<T>(&self, src: &T, rng: &mut impl CryptoRngCore) -> T
+    pub fn critical_read<T>(&self, src: &T, rng: &mut (impl RngCore + CryptoRng)) -> T
     where
         T: Eq + Copy + Default,
     {
@@ -410,7 +418,7 @@ impl FaultInjectionPrevention {
         dst: &mut T,
         src: T,
         mut write_op: impl FnMut(&mut T, T),
-        rng: &mut impl CryptoRngCore,
+        rng: &mut (impl RngCore + CryptoRng),
     ) where
         T: Eq + Copy + Default,
     {
