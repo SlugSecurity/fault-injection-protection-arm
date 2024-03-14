@@ -51,7 +51,7 @@ pub struct RngNotUsed {}
 
 #[sealed]
 trait RngFnOnce<T, U: RngCore + CryptoRng> {
-    fn exec(self, rng: &mut U) -> ();
+    fn exec(self, rng: &mut U);
 }
 
 #[sealed]
@@ -65,7 +65,7 @@ where
     F: FnOnce(&mut T),
     T: RngCore + CryptoRng,
 {
-    fn exec(self, rng: &mut T) -> () {
+    fn exec(self, rng: &mut T) {
         (self)(rng)
     }
 }
@@ -76,7 +76,7 @@ where
     F: FnOnce(),
     T: RngCore + CryptoRng,
 {
-    fn exec(self, _: &mut T) -> () {
+    fn exec(self, _: &mut T) {
         (self)()
     }
 }
