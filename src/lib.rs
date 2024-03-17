@@ -25,13 +25,14 @@ const CRITICAL_BOOL: usize = const_random::const_random!(usize);
 const CRITICAL_ERROR: usize = const_random::const_random!(usize);
 
 #[allow(missing_docs)]
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Default)]
 #[repr(usize)]
 /// Large constants values for true and false. This makes it so attackers need
 /// to do more than flip a signle bit for a true/false flip.
 pub enum SecureBool {
     True = CRITICAL_BOOL,
     False = !CRITICAL_BOOL,
+    #[default]
     Error = CRITICAL_ERROR,
 }
 
