@@ -66,7 +66,7 @@ impl RefCanaryStack {
 
     /// Removes the newest stack canary reference off of the stack.
     /// # Safety: Must be called at the end of a critical function to compare
-    /// the actaul stack canary value with the reference canary value
+    /// the actual stack canary value with the reference canary value
     #[inline(always)]
     fn pop(&mut self, fip: &FaultInjectionPrevention, rng: &mut impl CryptoRngCore) -> u64 {
         let popped_value = self.reference_canary_vec[self.counter];
