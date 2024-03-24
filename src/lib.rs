@@ -35,7 +35,10 @@ impl RefCanaryStack {
             panic!()
         }
 
+        // use critical_write in future
+        // critical_write(|dst, src| write_volitile(dst, src + 1))
         self.counter += 1;
+        // use critical_write in future
         self.reference_canary_vec[self.counter] = new_canary;
     }
 
@@ -44,8 +47,9 @@ impl RefCanaryStack {
     /// the actaul stack canary value with the reference canary value
     #[inline(always)]
     fn pop(&mut self) -> u64 {
+        // use critical_write in future
         let popped_value = self.reference_canary_vec[self.counter];
-        self.reference_canary_vec[self.counter] = 0u64;
+        // critical_write(|dst, src| write_volitile(dst, src + 1))
         self.counter -= 1;
         popped_value
     }
@@ -53,6 +57,7 @@ impl RefCanaryStack {
     /// Returns the newest stack canary reference on the stack
     #[inline(always)]
     fn peek(&self) -> u64 {
+        // use critical_read in future
         self.reference_canary_vec[self.counter]
     }
 }
@@ -259,12 +264,13 @@ impl FaultInjectionPrevention {
         // force canary to be allocated to stack instead of register
         let mut canary: u64 = black_box(0);
 
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
         unsafe {
             // generate a new global canary at runtime using CryptoRng reference
             // stored in fip struct
             REF_CANARY.push(0);
 
-            // use critical_write in future
             canary = REF_CANARY.peek();
         }
 
