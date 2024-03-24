@@ -372,7 +372,7 @@ impl FaultInjectionPrevention {
         unsafe {
             // generate a new global canary at runtime using CryptoRngCore
             // reference stored in fip struct
-            REF_CANARY.push(rng.next_u64(), &self, rng);
+            REF_CANARY.push(rng.next_u64(), self, rng);
 
             self.critical_write(
                 &mut canary,
@@ -385,7 +385,7 @@ impl FaultInjectionPrevention {
         helper::dsb();
         run();
 
-        let reference_canary = unsafe { REF_CANARY.pop(&self, rng) };
+        let reference_canary = unsafe { REF_CANARY.pop(self, rng) };
         self.critical_if(
             || (canary == reference_canary).into(),
             || (),
