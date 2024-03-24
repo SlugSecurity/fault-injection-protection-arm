@@ -10,3 +10,4 @@ license = "MIT"
 cortex-m = "0.7.7"
 rand_core = "0.6.4"
 const-random = { version = "0.1.17" }
+sealed = "0.5.0"

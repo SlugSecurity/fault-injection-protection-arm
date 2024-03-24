@@ -14,6 +14,8 @@ use core::ptr::{read_volatile, write_volatile};
 use core::result::Result;
 use cortex_m::asm::delay;
 use rand_core::CryptoRngCore;
+use sealed::sealed;
+
 extern crate const_random;
 
 // Application Interrupt and Reset Control Register
@@ -42,6 +44,63 @@ impl From<bool> for SecureBool {
             true => SecureBool::True,
             false => SecureBool::False,
         }
+    }
+}
+
+/// A phantom data type that is used by Rng closure traits
+pub struct RngNotUsed {}
+
+#[sealed]
+trait RngFnOnce<T, U: CryptoRngCore> {
+    fn exec(self, rng: &mut U);
+}
+
+#[sealed]
+trait RngFnMut<T, U: CryptoRngCore> {
+    fn exec(&mut self, rng: &mut U) -> SecureBool;
+}
+
+#[sealed]
+impl<F, T> RngFnOnce<T, T> for F
+where
+    F: FnOnce(&mut T),
+    T: CryptoRngCore,
+{
+    fn exec(self, rng: &mut T) {
+        (self)(rng)
+    }
+}
+
+#[sealed]
+impl<F, T> RngFnOnce<RngNotUsed, T> for F
+where
+    F: FnOnce(),
+    T: CryptoRngCore,
+{
+    fn exec(self, _: &mut T) {
+        (self)()
+    }
+}
+
+#[sealed]
+impl<F, T> RngFnMut<T, T> for F
+where
+    F: FnMut(&mut T) -> SecureBool,
+    T: CryptoRngCore,
+{
+    fn exec(&mut self, rng: &mut T) -> SecureBool {
+        (self)(rng)
+    }
+}
+
+#[sealed]
+impl<F, T> RngFnMut<RngNotUsed, T> for F
+where
+    F: FnMut() -> SecureBool,
+    T: CryptoRngCore,
+{
+    fn exec(&mut self, _: &mut T) -> SecureBool {
+        (self)()
     }
 }
 
@@ -201,12 +260,13 @@ impl FaultInjectionPrevention {
     /// Takes a condition closure, a success closure, and a failure closure. The success and failure
     /// closures should match the success and failure cases of the code that is being run to ensure
     /// maximum protection.
-    pub fn critical_if(
+    #[allow(private_bounds)]
+    pub fn critical_if<FnMutType, FnOnceType1, FnOnceType2, T: CryptoRngCore>(
         &self,
-        mut condition: impl FnMut() -> SecureBool,
-        success: impl FnOnce(),
-        failure: impl FnOnce(),
-        rng: &mut impl CryptoRngCore,
+        mut condition: impl RngFnMut<FnMutType, T>,
+        success: impl RngFnOnce<FnOnceType1, T>,
+        failure: impl RngFnOnce<FnOnceType2, T>,
+        rng: &mut T,
     ) {
         let mut cond = SecureBool::Error;
 
@@ -218,7 +278,7 @@ impl FaultInjectionPrevention {
             write_volatile(&mut cond, SecureBool::Error);
         }
 
-        if black_box(black_box(condition()) == SecureBool::False) {
+        if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
             // SAFETY: cond is non-null and properly aligned since it comes from a
             // Rust variable. In addition SecureBool derives the Copy trait, so a
             // bit-wise copy is performed
@@ -226,7 +286,7 @@ impl FaultInjectionPrevention {
                 write_volatile(&mut cond, SecureBool::False);
             }
         } else {
-            if black_box(black_box(condition()) == SecureBool::False) {
+            if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
@@ -242,8 +302,8 @@ impl FaultInjectionPrevention {
 
         self.secure_random_delay(rng);
 
-        if black_box(black_box(condition()) == SecureBool::False) {
-            if black_box(black_box(condition()) == SecureBool::True) {
+        if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
+            if black_box(black_box(condition.exec(rng)) == SecureBool::True) {
                 Self::secure_reset_device();
             }
 
@@ -254,9 +314,9 @@ impl FaultInjectionPrevention {
 
             // Not moving the parentheses to the outside makes smaller code.
             #[allow(clippy::unit_arg)]
-            black_box(failure());
+            black_box(failure.exec(rng));
         } else {
-            if black_box(black_box(condition()) == SecureBool::False) {
+            if black_box(black_box(condition.exec(rng)) == SecureBool::False) {
                 Self::secure_reset_device();
             }
 
@@ -267,7 +327,7 @@ impl FaultInjectionPrevention {
 
             // Not moving the parentheses to the outside makes smaller code.
             #[allow(clippy::unit_arg)]
-            black_box(success());
+            black_box(success.exec(rng));
         }
 
         helper::dsb();
