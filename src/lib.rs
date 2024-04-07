@@ -48,6 +48,8 @@ impl RefCanaryStack {
         let current_counter = self.counter;
 
         // increase stack canary stack count
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
         fip.critical_write(
             &mut self.counter,
             black_box(current_counter + 1),
@@ -56,6 +58,8 @@ impl RefCanaryStack {
         );
 
         // push new stack canary onto the stack
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
         fip.critical_write(
             &mut self.reference_canary_vec[self.counter],
             new_canary,
@@ -75,6 +79,8 @@ impl RefCanaryStack {
         let current_counter = self.counter;
 
         // decrease stack canary stack counter
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
         fip.critical_write(
             &mut self.counter,
             black_box(current_counter - 1),
@@ -385,6 +391,8 @@ impl FaultInjectionPrevention {
         helper::dsb();
         run();
 
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
         let reference_canary = unsafe { REF_CANARY.pop(self, rng) };
         self.critical_if(
             || (canary == reference_canary).into(),
