@@ -18,6 +18,90 @@ use sealed::sealed;
 
 extern crate const_random;
 
+/// Global stack that pushes new stack canaries onto non-stack memory
+struct RefCanaryStack {
+    reference_canary_vec: [u64; 50],
+    counter: usize,
+}
+
+impl RefCanaryStack {
+    /// Creates a new canary stack.
+    /// # Safety: Must allocate in non-stack memory
+    const fn new() -> Self {
+        RefCanaryStack {
+            reference_canary_vec: [0u64; 50],
+            counter: 0,
+        }
+    }
+
+    /// Pushes a new stack canary reference on the stack.
+    #[inline(always)]
+    fn push(
+        &mut self,
+        new_canary: u64,
+        fip: &FaultInjectionPrevention,
+        rng: &mut impl CryptoRngCore,
+    ) {
+        if self.counter >= self.reference_canary_vec.len() - 1 {
+            panic!()
+        }
+
+        // need extra variable to because `self.counter` is mutably borrowed
+        let current_counter = self.counter;
+
+        // increase stack canary stack count
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
+        fip.critical_write(
+            &mut self.counter,
+            black_box(current_counter + 1),
+            unsafe { |dst, src| write_volatile(dst, src) },
+            rng,
+        );
+
+        // push new stack canary onto the stack
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
+        fip.critical_write(
+            &mut self.reference_canary_vec[self.counter],
+            new_canary,
+            unsafe { |dst, src| write_volatile(dst, src) },
+            rng,
+        );
+    }
+
+    /// Removes the newest stack canary reference off of the stack.
+    /// # Safety: Must be called at the end of a critical function to compare
+    /// the actual stack canary value with the reference canary value
+    #[inline(always)]
+    fn pop(&mut self, fip: &FaultInjectionPrevention, rng: &mut impl CryptoRngCore) -> u64 {
+        let popped_value = self.reference_canary_vec[self.counter];
+
+        // need extra variable to because `self.counter` is mutably borrowed
+        let current_counter = self.counter;
+
+        // decrease stack canary stack counter
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
+        fip.critical_write(
+            &mut self.counter,
+            black_box(current_counter - 1),
+            unsafe { |dst, src| write_volatile(dst, src) },
+            rng,
+        );
+
+        popped_value
+    }
+
+    /// Returns the newest stack canary reference on the stack
+    #[inline(always)]
+    fn peek(&self) -> u64 {
+        self.reference_canary_vec[self.counter]
+    }
+}
+
+static mut REF_CANARY: RefCanaryStack = RefCanaryStack::new();
+
 // Application Interrupt and Reset Control Register
 const AIRCR_ADDR: u32 = 0xE000ED0C;
 const AIRCR_VECTKEY: u32 = 0x05FA << 16;
@@ -331,6 +415,51 @@ impl FaultInjectionPrevention {
         }
 
         helper::dsb();
+    }
+
+    /// Stack canaries should be used anywhere where there is user input or
+    /// potential for user input, so overflow via glitching is difficult at
+    /// these points
+    /// ```
+    /// let mut user_input = [b'A'; 100];
+    /// let mut buffer: [u8; 16] = [0; 16];
+    /// fip.stack_canary(|| unsafe {
+    ///     copy(user_input.as_ptr(), buffer.as_mut_ptr(), user_input.len())
+    /// });
+    /// ```
+
+    #[inline(never)]
+    pub fn stack_canary(&self, run: impl FnOnce(), rng: &mut impl CryptoRngCore) {
+        // force canary to be allocated to stack instead of register
+        let mut canary: u64 = black_box(0);
+
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
+        unsafe {
+            // generate a new global canary at runtime using CryptoRngCore
+            // reference stored in fip struct
+            REF_CANARY.push(rng.next_u64(), self, rng);
+
+            self.critical_write(
+                &mut canary,
+                REF_CANARY.peek(),
+                |dst, src| write_volatile(dst, src),
+                rng,
+            );
+        }
+
+        helper::dsb();
+        run();
+
+        // SAFETY: No race conditions because this library only supports single
+        // threaded programs
+        let reference_canary = unsafe { REF_CANARY.pop(self, rng) };
+        self.critical_if(
+            || (canary == reference_canary).into(),
+            || (),
+            || Self::secure_reset_device(),
+            rng,
+        );
     }
 
     /// To be used for a critical memory reads that should be resistant to
